@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: seata-order-service
+  labels:
+    name: seata-order-service
+spec:
+  type: NodePort
+  ports:
+  - port: 8101
+    name: "storage"
+    targetPort: 8101
+    protocol: TCP
+  selector:
+    app: seata-order

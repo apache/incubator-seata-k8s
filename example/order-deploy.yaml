@@ -1,0 +1,28 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: seata-order-deployment
+  labels:
+    name: seata-order-deployment
+spec:
+  template:
+    metadata:
+      labels:
+        app: seata-order
+    spec:
+      hostAliases:
+      - ip: "10.108.57.30"
+        hostnames:
+        - "nacos"
+      - ip: "10.108.57.30"
+        hostnames:
+        - "fescar"
+      - ip: "10.108.57.30"
+        hostnames:
+        - "mysql"
+      containers:
+        - name: samples-order
+          imagePullPolicy: IfNotPresent
+          image: samples-order:1.0.0
+          ports:
+            - containerPort: 8101

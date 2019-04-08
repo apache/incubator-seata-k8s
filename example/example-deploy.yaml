@@ -1,0 +1,33 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: seata-example-deployment
+  labels:
+    name: seata-example-deployment
+spec:
+  template:
+    metadata:
+      labels:
+        app: seata-example
+    spec:
+      hostAliases:
+      - ip: "10.108.57.30"
+        hostnames:
+        - "nacos"
+      - ip: "10.108.57.30"
+        hostnames:
+        - "fescar"
+      - ip: "10.108.57.30"
+        hostnames:
+        - "mysql"
+      containers:
+        - name: samples-account
+          imagePullPolicy: IfNotPresent
+          image: samples-account:1.0.0
+          ports:
+            - containerPort: 8102
+        - name: samples-storage
+          imagePullPolicy: IfNotPresent
+          image: samples-storage:1.0.0
+          ports:
+            - containerPort: 8100
