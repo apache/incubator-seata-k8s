@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: seata-business-service
+  labels:
+    name: seata-business-service
+spec:
+  type: NodePort
+  ports:
+  - port: 8104
+    name: "storage"
+    targetPort: 8104
+    protocol: TCP
+  selector:
+    app: seata-business

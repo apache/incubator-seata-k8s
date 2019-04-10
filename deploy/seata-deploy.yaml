@@ -1,0 +1,36 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: seata-deployment
+  labels:
+    name: seata-deployment
+spec:
+  template:
+    metadata:
+      labels:
+        app: seata
+    spec:
+      containers:
+        - name: fescar-standalone-container
+          imagePullPolicy: IfNotPresent
+          image: registry.cn-hangzhou.aliyuncs.com/slievrly/fescar:0.4.0
+          ports:
+            - containerPort: 8091
+        - name: nacos-standalone-container
+          imagePullPolicy: IfNotPresent
+          image: nacos/nacos-server:latest
+          ports:
+            - containerPort: 8848
+          env:
+            - name: MODE
+              value: "standalone"
+        - name: mysql-standalone-container
+          imagePullPolicy: IfNotPresent
+          image: mysql:5.6
+          ports:
+            - containerPort: 3306
+          env:
+            - name: MYSQL_DATABASE
+              value: "db_gts_fescar"
+            - name: MYSQL_ROOT_PASSWORD
+              value: "root"

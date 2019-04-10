@@ -1,0 +1,28 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: seata-business-deployment
+  labels:
+    name: seata-business-deployment
+spec:
+  template:
+    metadata:
+      labels:
+        app: seata-business
+    spec:
+      hostAliases:
+      - ip: "10.108.57.30"
+        hostnames:
+        - "nacos"
+      - ip: "10.108.57.30"
+        hostnames:
+        - "fescar"
+      - ip: "10.108.57.30"
+        hostnames:
+        - "mysql"
+      containers:
+        - name: samples-dubbo-business-call
+          imagePullPolicy: IfNotPresent
+          image: samples-dubbo-business-call:1.0.0
+          ports:
+            - containerPort: 8104
