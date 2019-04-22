@@ -4,20 +4,20 @@
 
 https://github.com/seata/seata
 
-https://github.com/fescar-group/fescar-samples/tree/docker/springboot-dubbo-fescar
+https://github.com/seata/seata-samples/tree/docker/springboot-dubbo-seata
 
-https://github.com/fescar-group/fescar-docker
+https://github.com/seata/seata-docker
 
 ## 方式一: 查看官网在WIN/MAC 快速体验
 
 
 ## 方式二: 使用帮助
-由于一些原因, fescar docker 镜像使用暂不提供容器外部调用 ,那么需要案例相关项目也在容器内部 和fescar镜像保持link模式
+由于一些原因, seata docker 镜像使用暂不提供容器外部调用 ,那么需要案例相关项目也在容器内部 和 seata 镜像保持link模式
 
 ```sh
-## 启动 seata deployment (nacos,fescar,mysql)
+## 启动 seata deployment (nacos,seata,mysql)
 kubectl create -f deploy/seata-deploy.yaml
-## 启动 seata service (nacos,fescar,mysql)
+## 启动 seata service (nacos,seata,mysql)
 kubectl create -f deploy/seata-service.yaml 
 ## 上面会得到一个nodeport ip ( kubectl get service )
 ### seata-service           NodePort    10.108.3.238   <none>        8091:31236/TCP,3305:30992/TCP,8848:30093/TCP   12m
@@ -46,7 +46,7 @@ curl  -H "Content-Type: application/json" -X POST --data "{\"id\":1,\"userId\":\
 curl  -H "Content-Type: application/json" -X POST --data "{\"commodityCode\":\"C201901140001\",\"count\":100}"   cluster-ip:8100/storage/dec_storage
 # 订单服务 添加订单 扣费
 curl  -H "Content-Type: application/json" -X POST --data "{\"userId\":\"1\",\"commodityCode\":\"C201901140001\",\"orderCount\":10,\"orderAmount\":100}"   cluster-ip:8101/order/create_order
-# 业务服务 客户端fescar版本太低
+# 业务服务 客户端seata版本太低
 curl  -H "Content-Type: application/json" -X POST --data "{\"userId\":\"1\",\"commodityCode\":\"C201901140001\",\"count\":10,\"amount\":100}"   cluster-ip:8104/business/dubbo/buy
 ```
 
