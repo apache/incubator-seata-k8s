@@ -4,7 +4,7 @@
 
 https://github.com/seata/seata
 
-https://github.com/seata/seata-samples/tree/docker/springboot-dubbo-seata
+https://github.com/seata/seata-samples/tree/docker/springboot-dubbo-fescar
 
 https://github.com/seata/seata-docker
 
