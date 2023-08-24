@@ -1,0 +1,56 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: seata-server
+  namespace: default
+  labels:
+    k8s-app: seata-server
+spec:
+  type: NodePort
+  ports:
+    - port: 8091
+      nodePort: 30091
+      protocol: TCP
+      name: service
+    - port: 7091
+      nodePort: 30092
+      protocol: TCP
+      name: console
+  selector:
+    k8s-app: seata-server
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: seata-server
+  namespace: default
+  labels:
+    k8s-app: seata-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      k8s-app: seata-server
+  template:
+    metadata:
+      labels:
+        k8s-app: seata-server
+    spec:
+      containers:
+        - name: seata-server
+          image: docker.io/seataio/seata-server:1.7.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: SEATA_PORT
+              value: "8091"
+            - name: STORE_MODE
+              value: file
+          ports:
+            - name: service
+              containerPort: 8091
+              protocol: TCP
+            - name: console
+              containerPort: 7091
+              protocol: TCP
