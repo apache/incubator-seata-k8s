@@ -1,0 +1,13 @@
+apiVersion: operator.seata.io/v1alpha1
+kind: SeataServer
+metadata:
+  name: seata-server
+  namespace: default
+spec:
+  serviceName: seata-server-cluster
+  replicas: 3
+  image: seataio/seata-server:latest
+  store:
+    resources:
+      requests:
+        storage: 5Gi
