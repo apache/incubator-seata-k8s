@@ -17,11 +17,16 @@ limitations under the License.
 package controllers
 
 import (
+	"errors"
 	"fmt"
 	seatav1alpha1 "github.com/seata/seata-k8s/api/v1alpha1"
+	"io"
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/json"
+	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -48,11 +53,11 @@ func initStatefulSet(s *seatav1alpha1.SeataServer) *appsv1.StatefulSet {
 			}},
 		},
 	}
-	updateStatefulSet(statefulSet, s)
+	_ = updateStatefulSet(statefulSet, s, false)
 	return statefulSet
 }
 
-func updateStatefulSet(statefulSet *appsv1.StatefulSet, s *seatav1alpha1.SeataServer) {
+func updateStatefulSet(statefulSet *appsv1.StatefulSet, s *seatav1alpha1.SeataServer, existed bool) error {
 	var envs []apiv1.EnvVar
 	// Create basic environments
 	envs = []apiv1.EnvVar{
@@ -107,12 +112,50 @@ func updateStatefulSet(statefulSet *appsv1.StatefulSet, s *seatav1alpha1.SeataSe
 		//addrBuilder.WriteString(fmt.Sprintf("%s-%d:%d,", s.Name, i, s.Spec.Ports.RaftPort))
 	}
 	addr := addrBuilder.String()
-	envs = replaceOrAppendEnv(envs, "server.raft.serverAddr", addr[:len(addr)-1])
+	addr = addr[:len(addr)-1]
+	if existed {
+		if err := callToChangeCluster(s, addr); err != nil {
+			return err
+		}
+	}
 
+	envs = replaceOrAppendEnv(envs, "server.raft.serverAddr", addr)
 	for k, v := range s.Spec.Env {
 		envs = replaceOrAppendEnv(envs, k, v)
 	}
 	container.Env = envs
+	return nil
+}
+
+func callToChangeCluster(s *seatav1alpha1.SeataServer, raftClusterStr string) error {
+	client := http.Client{}
+	for i := int32(0); i < s.Spec.Replicas; i++ {
+		// Add governed service name to communicate to each other
+		target := fmt.Sprintf("%s-%d.%s:%d/metadata/v1/changeCluster?raftClusterStr=%s",
+			s.Name, i, s.Spec.ServiceName, s.Spec.Ports.ServicePort, url.QueryEscape(raftClusterStr))
+		rsp, err := client.Post(target, "application/json", nil)
+		if err != nil {
+			return err
+		}
+		defer rsp.Body.Close()
+
+		m := make(map[string]interface{})
+		if rsp.StatusCode == http.StatusOK {
+			body, err := io.ReadAll(rsp.Body)
+			if err != nil {
+				return err
+			}
+
+			if err = json.Unmarshal(body, &m); err != nil {
+				return err
+			}
+
+			if strings.HasPrefix(m["message"].(string), "fail to") {
+				return errors.New(m["message"].(string))
+			}
+		}
+	}
+	return nil
 }
 
 func replaceOrAppendEnv(envs []apiv1.EnvVar, key string, value string) []apiv1.EnvVar {

@@ -82,7 +82,9 @@ func (r *SeataServerReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// create or update stateful sets
 	statefulSet := initStatefulSet(s)
 	if err := createOrUpdate(ctx, r, "StatefulSet", statefulSet, func() error {
-		updateStatefulSet(statefulSet, s)
+		if err := updateStatefulSet(statefulSet, s, true); err != nil {
+			return err
+		}
 		return controllerutil.SetControllerReference(s, statefulSet, r.Scheme)
 	}, logger); err != nil {
 		logger.Error(err, "Failed to create resource StatefulSet(%v)", req.NamespacedName)
@@ -114,11 +116,11 @@ func createOrUpdate(ctx context.Context, r *SeataServerReconciler, kind string, 
 	key := client.ObjectKeyFromObject(object)
 	status, err := controllerutil.CreateOrUpdate(ctx, r.Client, object, f)
 	if err != nil {
-		logger.Error(err, fmt.Sprintf("Failed to createOrUpdate object {%s:%s}", kind, key))
+		logger.Error(err, fmt.Sprintf("Failed to createOrUpdate object {%s:%v}", kind, key))
 		return err
 	}
 
-	logger.Info(fmt.Sprintf("createOrUpdate object {%s:%s} : %s", kind, key, status))
+	logger.Info(fmt.Sprintf("createOrUpdate object {%s:%v} : %s", kind, key, status))
 	return nil
 }
 
