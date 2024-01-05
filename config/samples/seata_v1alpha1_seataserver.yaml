@@ -1,0 +1,12 @@
+apiVersion: operator.seata.io/v1alpha1
+kind: SeataServer
+metadata:
+  labels:
+    app.kubernetes.io/name: seataserver
+    app.kubernetes.io/instance: seataserver-sample
+    app.kubernetes.io/part-of: seata-k8s
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: seata-k8s
+  name: seataserver-sample
+spec:
+  # TODO(user): Add fields here

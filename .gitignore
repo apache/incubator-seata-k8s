@@ -29,6 +29,3 @@ Dockerfile.cross
 quickstart/
 
 vendor/
-
-# Ignore config directory
-/config
