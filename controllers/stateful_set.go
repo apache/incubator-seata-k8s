@@ -17,18 +17,24 @@ limitations under the License.
 package controllers
 
 import (
+	"bytes"
+	"context"
 	"errors"
 	"fmt"
+	"github.com/go-logr/logr"
 	seatav1alpha1 "github.com/seata/seata-k8s/api/v1alpha1"
 	"io"
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/json"
+	"math"
 	"net/http"
 	"net/url"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func initStatefulSet(s *seatav1alpha1.SeataServer) *appsv1.StatefulSet {
@@ -53,11 +59,11 @@ func initStatefulSet(s *seatav1alpha1.SeataServer) *appsv1.StatefulSet {
 			}},
 		},
 	}
-	_ = updateStatefulSet(statefulSet, s, false)
 	return statefulSet
 }
 
-func updateStatefulSet(statefulSet *appsv1.StatefulSet, s *seatav1alpha1.SeataServer, existed bool) error {
+func updateStatefulSet(ctx context.Context, statefulSet *appsv1.StatefulSet, s *seatav1alpha1.SeataServer) {
+	logger := log.FromContext(ctx)
 	var envs []apiv1.EnvVar
 	// Create basic environments
 	envs = []apiv1.EnvVar{
@@ -113,46 +119,132 @@ func updateStatefulSet(statefulSet *appsv1.StatefulSet, s *seatav1alpha1.SeataSe
 	}
 	addr := addrBuilder.String()
 	addr = addr[:len(addr)-1]
-	if existed {
-		if err := callToChangeCluster(s, addr); err != nil {
-			return err
-		}
-	}
 
 	envs = replaceOrAppendEnv(envs, "server.raft.serverAddr", addr)
 	for k, v := range s.Spec.Env {
 		envs = replaceOrAppendEnv(envs, k, v)
 	}
 	container.Env = envs
-	return nil
+
+	go func(s seatav1alpha1.SeataServer) {
+		healthyCheck(logger, s)
+		if err := changeCluster(s, addr); err != nil {
+			logger.Error(err, "error during calling api")
+		} else {
+			logger.Info("call api to change cluster successfully")
+		}
+	}(*s)
 }
 
-func callToChangeCluster(s *seatav1alpha1.SeataServer, raftClusterStr string) error {
+func healthyCheck(logger logr.Logger, s seatav1alpha1.SeataServer) {
+	const exponentialBackoffCeilingSecs int64 = 10 * 60
+	lastUpdatedAt := time.Now()
+	attempts := 0
+
+	var delaySecs int64
+	for delaySecs != exponentialBackoffCeilingSecs {
+		success := true
+		for i := int32(0); i < s.Spec.Replicas; i++ {
+			rsp, err := http.Get(fmt.Sprintf("http://%s-%d.%s.%s.svc:%d",
+				s.Name, i, s.Spec.ServiceName, s.Namespace, s.Spec.Ports.ConsolePort))
+			if err != nil || rsp.StatusCode != 200 {
+				logger.Error(err, fmt.Sprintf("error during healthy check, err %v, rsp %v", err, rsp))
+				success = false
+				break
+			}
+		}
+		if success {
+			return
+		}
+
+		// Use exponential backoff to check health
+		if time.Now().Sub(lastUpdatedAt).Hours() >= 12 {
+			attempts = 0
+		}
+		lastUpdatedAt = time.Now()
+		attempts += 1
+		delaySecs = int64(math.Floor((math.Pow(2, float64(attempts)) - 1) * 0.5))
+		if delaySecs > exponentialBackoffCeilingSecs {
+			delaySecs = exponentialBackoffCeilingSecs
+		}
+		logger.Info(fmt.Sprintf("%d-th attempt for healthy check, waiting %d seconds", attempts, delaySecs))
+		time.Sleep(time.Duration(delaySecs) * time.Second)
+	}
+	logger.Info("attempt for healthy check failed")
+}
+
+type rspData struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Data    string `json:"data"`
+	Success bool   `json:"success"`
+}
+
+func changeCluster(s seatav1alpha1.SeataServer, raftClusterStr string) error {
 	client := http.Client{}
 	for i := int32(0); i < s.Spec.Replicas; i++ {
 		// Add governed service name to communicate to each other
-		target := fmt.Sprintf("%s-%d.%s:%d/metadata/v1/changeCluster?raftClusterStr=%s",
-			s.Name, i, s.Spec.ServiceName, s.Spec.Ports.ServicePort, url.QueryEscape(raftClusterStr))
-		rsp, err := client.Post(target, "application/json", nil)
+		host := fmt.Sprintf("%s-%d.%s.%s.svc:%d", s.Name, i, s.Spec.ServiceName, s.Namespace, s.Spec.Ports.ConsolePort)
+		username, ok := s.Spec.Env["console.user.username"]
+		if !ok {
+			username = "seata"
+		}
+		password, ok := s.Spec.Env["console.user.password"]
+		if !ok {
+			password = "seata"
+		}
+
+		values := map[string]string{"username": username, "password": password}
+		jsonValue, _ := json.Marshal(values)
+		loginUrl := fmt.Sprintf("http://%s/api/v1/auth/login", host)
+		rsp, err := client.Post(loginUrl, "application/json", bytes.NewBuffer(jsonValue))
 		if err != nil {
 			return err
 		}
-		defer rsp.Body.Close()
 
-		m := make(map[string]interface{})
-		if rsp.StatusCode == http.StatusOK {
-			body, err := io.ReadAll(rsp.Body)
-			if err != nil {
-				return err
-			}
+		d := &rspData{}
+		var tokenStr string
+		if rsp.StatusCode != http.StatusOK {
+			return errors.New("login failed")
+		}
 
-			if err = json.Unmarshal(body, &m); err != nil {
-				return err
-			}
+		body, err := io.ReadAll(rsp.Body)
+		if err != nil {
+			return err
+		}
+		if err = json.Unmarshal(body, &d); err != nil {
+			return err
+		}
+		if !d.Success {
+			return errors.New(d.Message)
+		}
+		tokenStr = d.Data
 
-			if strings.HasPrefix(m["message"].(string), "fail to") {
-				return errors.New(m["message"].(string))
-			}
+		targetUrl := fmt.Sprintf("http://%s/metadata/v1/changeCluster?raftClusterStr=%s",
+			host, url.QueryEscape(raftClusterStr))
+		req, _ := http.NewRequest("POST", targetUrl, nil)
+		req.Header.Set("Authorization", tokenStr)
+		rsp, err = client.Do(req)
+		if err != nil {
+			return err
+		}
+
+		d = &rspData{}
+		if rsp.StatusCode != http.StatusOK {
+			return errors.New("failed to changeCluster")
+		}
+
+		body, err = io.ReadAll(rsp.Body)
+		if err != nil {
+			return err
+		}
+
+		if err = json.Unmarshal(body, &d); err != nil {
+			return err
+		}
+
+		if !d.Success {
+			return errors.New(d.Message)
 		}
 	}
 	return nil

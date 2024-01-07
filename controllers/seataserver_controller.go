@@ -20,8 +20,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/go-logr/logr"
-	appsv1 "k8s.io/api/apps/v1"
-	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -64,7 +62,7 @@ func (r *SeataServerReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{}, nil
 		}
 
-		logger.Error(err, "Failed to get resource SeataServer(%v)", req.NamespacedName)
+		logger.Error(err, fmt.Sprintf("Failed to get resource SeataServer(%v)", req.NamespacedName))
 		return ctrl.Result{}, err
 	}
 	setupDefaults(s)
@@ -75,20 +73,26 @@ func (r *SeataServerReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		updateService(service, s)
 		return controllerutil.SetControllerReference(s, service, r.Scheme)
 	}, logger); err != nil {
-		logger.Error(err, "Failed to create resource Service(%v)", req.NamespacedName)
+		logger.Error(err, fmt.Sprintf("Failed to create resource Service(%v)", req.NamespacedName))
 		return ctrl.Result{}, err
 	}
 
 	// create or update stateful sets
 	statefulSet := initStatefulSet(s)
 	if err := createOrUpdate(ctx, r, "StatefulSet", statefulSet, func() error {
-		if err := updateStatefulSet(statefulSet, s, true); err != nil {
-			return err
-		}
+		updateStatefulSet(ctx, statefulSet, s)
 		return controllerutil.SetControllerReference(s, statefulSet, r.Scheme)
 	}, logger); err != nil {
-		logger.Error(err, "Failed to create resource StatefulSet(%v)", req.NamespacedName)
+		logger.Error(err, fmt.Sprintf("Failed to create resource StatefulSet(%v)", req.NamespacedName))
 		return ctrl.Result{}, err
+	}
+
+	if !s.Status.Deployed {
+		s.Status.Deployed = true
+		if err := r.Status().Update(ctx, s); err != nil {
+			logger.Error(err, "Failed to update SeataServer/status")
+			return ctrl.Result{}, err
+		}
 	}
 
 	return ctrl.Result{}, nil
@@ -98,8 +102,6 @@ func (r *SeataServerReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 func (r *SeataServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&seatav1alpha1.SeataServer{}).
-		Owns(&appsv1.StatefulSet{}).
-		Owns(&apiv1.Service{}).
 		Complete(r)
 }
 
