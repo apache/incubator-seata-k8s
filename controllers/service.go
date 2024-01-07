@@ -30,7 +30,6 @@ func initService(s *seatav1alpha1.SeataServer) *apiv1.Service {
 			Labels:    makeLabels(s.Name),
 		},
 	}
-	updateService(service, s)
 	return service
 }
 
