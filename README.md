@@ -94,7 +94,7 @@ For CRD details, you can visit [operator.seata.io_seataservers.yaml](config/crd/
            storage: 5Gi
      env:
        console.user.username: seata
-       console.user.username: seata
+       console.user.password: seata
    ```
 
 ## Method 2: Example without Using Operator

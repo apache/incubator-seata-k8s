@@ -97,9 +97,9 @@ https://github.com/seata/seata-docker
        resources:
          requests:
            storage: 5Gi
-   	env:
-   		console.user.username: seata
-   		console.user.username: seata
+     env:
+       console.user.username: seata
+       console.user.password: seata
    ```
    
    
