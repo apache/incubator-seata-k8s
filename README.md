@@ -12,7 +12,7 @@ Associated Projects:
 
 ### Usage
 
-We haven't officially released the Controller image yet. To experience deploying Seata Server using the Operator method, follow these steps:
+To experience deploying Seata Server using the Operator method, follow these steps:
 
 1. Clone this repository:
 
@@ -20,7 +20,9 @@ We haven't officially released the Controller image yet. To experience deploying
    git clone https://github.com/apache/incubator-seata-k8s.git
    ```
 
-2. Publish the controller image to a private registry:
+2. (Optional) Build and publish the controller image to a private registry:
+
+   > This step can be skipped, the operator use seataio/seata-controller:latest as controller image by default.
 
    ```shell
    IMG=${IMAGE-TO-PUSH} make docker-build docker-push
@@ -30,7 +32,7 @@ We haven't officially released the Controller image yet. To experience deploying
 
    ```shell
    eval $(minikube docker-env)
-   make docker-build
+   IMG=${IMAGE-TO-PUSH} make docker-build
    ```
 
 3. Deploy Controller, CRD, RBAC, and other resources to the Kubernetes cluster:

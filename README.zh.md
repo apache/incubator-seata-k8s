@@ -16,7 +16,7 @@ https://github.com/seata/seata-docker
 
 ### Usage
 
-我们暂未没发布官方的 Controller 镜像，想要体验 Operator 方式部署 Seata Server 可以参照以下方式进行：
+想要体验 Operator 方式部署 Seata Server 可以参照以下方式进行：
 
 1. 克隆本仓库
 
@@ -24,7 +24,9 @@ https://github.com/seata/seata-docker
    git clone https://github.com/apache/incubator-seata-k8s.git
    ```
 
-2. 发布 controller 镜像到私有 Registry
+2. (可选) 发布 controller 镜像到私有 Registry
+
+   > 这一步可以跳过，本 Operator 默认使用 `seataio/seata-controller:latest` 作为 controller 镜像
 
    ```shell
    IMG=${IMAGE-TO-PUSH} make docker-build docker-push
@@ -34,7 +36,7 @@ https://github.com/seata/seata-docker
 
    ```shell
    eval $(minikube docker-env)
-   make docker-build
+   IMG=${IMAGE-TO-PUSH} make docker-build
    ```
 
 3. 部署 Controller, CRD, RBAC 等资源到 Kubernetes 集群
