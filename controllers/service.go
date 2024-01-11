@@ -17,7 +17,7 @@ limitations under the License.
 package controllers
 
 import (
-	seatav1alpha1 "github.com/seata/seata-k8s/api/v1alpha1"
+	seatav1alpha1 "github.com/apache/incubator-seata-k8s/api/v1alpha1"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )

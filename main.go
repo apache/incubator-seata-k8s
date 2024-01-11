@@ -32,8 +32,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	seatav1alpha1 "github.com/seata/seata-k8s/api/v1alpha1"
-	"github.com/seata/seata-k8s/controllers"
+	seatav1alpha1 "github.com/apache/incubator-seata-k8s/api/v1alpha1"
+	"github.com/apache/incubator-seata-k8s/controllers"
 	//+kubebuilder:scaffold:imports
 )
 

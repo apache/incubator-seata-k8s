@@ -30,7 +30,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	seatav1alpha1 "github.com/seata/seata-k8s/api/v1alpha1"
+	seatav1alpha1 "github.com/apache/incubator-seata-k8s/api/v1alpha1"
 	//+kubebuilder:scaffold:imports
 )
 
