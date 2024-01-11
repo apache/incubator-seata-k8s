@@ -1,11 +1,11 @@
-apiVersion: operator.seata.io/v1alpha1
+apiVersion: operator.seata.apache.org/v1alpha1
 kind: SeataServer
 metadata:
   name: seata-server
   namespace: default
 spec:
   serviceName: seata-server-cluster
-  replicas: 3
+  replicas: 2
   image: seataio/seata-server:latest
   store:
     resources:

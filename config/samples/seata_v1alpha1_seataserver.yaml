@@ -1,4 +1,4 @@
-apiVersion: operator.seata.io/v1alpha1
+apiVersion: operator.seata.apache.org/v1alpha1
 kind: SeataServer
 metadata:
   labels:

@@ -45,7 +45,7 @@ To experience deploying Seata Server using the Operator method, follow these ste
 4. You can now deploy your CR to the cluster. An example can be found here [seata-server-cluster.yaml](deploy/seata-server-cluster.yaml):
 
    ```yaml
-   apiVersion: operator.seata.io/v1alpha1
+   apiVersion: operator.seata.apache.org/v1alpha1
    kind: SeataServer
    metadata:
      name: seata-server
@@ -64,7 +64,7 @@ To experience deploying Seata Server using the Operator method, follow these ste
 
 ### Reference
 
-For CRD details, you can visit [operator.seata.io_seataservers.yaml](config/crd/bases/operator.seata.io_seataservers.yaml). Here are some important configurations:
+For CRD details, you can visit [operator.seata.apache.org_seataservers.yaml](config/crd/bases/operator.seata.apache.org_seataservers.yaml). Here are some important configurations:
 
 1. `serviceName`: Used to define the name of the Headless Service deployed by the controller. This will affect how you access the server cluster. In the example above, you can access the Seata Server cluster through `seata-server-0.seata-server-cluster.default.svc`.
 
@@ -81,7 +81,7 @@ For CRD details, you can visit [operator.seata.io_seataservers.yaml](config/crd/
 7. `env`: Environment variables passed to the container. You can use this field to define Seata Server configuration. For example:
 
    ```yaml
-   apiVersion: operator.seata.io/v1alpha1
+   apiVersion: operator.seata.apache.org/v1alpha1
    kind: SeataServer
    metadata:
      name: seata-server
