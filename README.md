@@ -22,7 +22,7 @@ To experience deploying Seata Server using the Operator method, follow these ste
 
 2. (Optional) Build and publish the controller image to a private registry:
 
-   > This step can be skipped, the operator use seataio/seata-controller:latest as controller image by default.
+   > This step can be skipped, the operator use apache/seata-controller:latest as controller image by default.
 
    ```shell
    IMG=${IMAGE-TO-PUSH} make docker-build docker-push

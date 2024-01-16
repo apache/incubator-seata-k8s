@@ -26,7 +26,7 @@ https://github.com/seata/seata-docker
 
 2. (可选) 发布 controller 镜像到私有 Registry
 
-   > 这一步可以跳过，本 Operator 默认使用 `seataio/seata-controller:latest` 作为 controller 镜像
+   > 这一步可以跳过，本 Operator 默认使用 `apache/seata-controller:latest` 作为 controller 镜像
 
    ```shell
    IMG=${IMAGE-TO-PUSH} make docker-build docker-push
