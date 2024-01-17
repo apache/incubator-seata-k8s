@@ -16,7 +16,7 @@ https://github.com/seata/seata-docker
 
 ### Usage
 
-我们暂未没发布官方的 Controller 镜像，想要体验 Operator 方式部署 Seata Server 可以参照以下方式进行：
+想要体验 Operator 方式部署 Seata Server 可以参照以下方式进行：
 
 1. 克隆本仓库
 
@@ -24,7 +24,9 @@ https://github.com/seata/seata-docker
    git clone https://github.com/apache/incubator-seata-k8s.git
    ```
 
-2. 发布 controller 镜像到私有 Registry
+2. (可选) 发布 controller 镜像到私有 Registry
+
+   > 这一步可以跳过，本 Operator 默认使用 `apache/seata-controller:latest` 作为 controller 镜像
 
    ```shell
    IMG=${IMAGE-TO-PUSH} make docker-build docker-push
@@ -34,7 +36,7 @@ https://github.com/seata/seata-docker
 
    ```shell
    eval $(minikube docker-env)
-   make docker-build
+   IMG=${IMAGE-TO-PUSH} make docker-build
    ```
 
 3. 部署 Controller, CRD, RBAC 等资源到 Kubernetes 集群
@@ -47,7 +49,7 @@ https://github.com/seata/seata-docker
 4. 此时即可发布你的 CR 到集群当中了，示例可以在这里找到 [seata-server-cluster.yaml](deploy/seata-server-cluster.yaml)
 
    ```yaml
-   apiVersion: operator.seata.io/v1alpha1
+   apiVersion: operator.seata.apache.org/v1alpha1
    kind: SeataServer
    metadata:
      name: seata-server
@@ -67,7 +69,7 @@ https://github.com/seata/seata-docker
 
 ### Reference
 
-关于 CRD 可以访问  [operator.seata.io_seataservers.yaml](config/crd/bases/operator.seata.io_seataservers.yaml) 以查看详细定义，这里列举出一些重要的配置并进行解读。
+关于 CRD 可以访问  [operator.seata.apache.org_seataservers.yaml](config/crd/bases/operator.seata.apache.org_seataservers.yaml) 以查看详细定义，这里列举出一些重要的配置并进行解读。
 
 1. `serviceName`: 用于定义 controller 部署的 Headless Service 的名称，这会影响你访问 server 集群的方式，比如在之前的示例中，你可以通过 seata-server-0.seata-server-cluster.default.svc 进行访问。
 
@@ -84,7 +86,7 @@ https://github.com/seata/seata-docker
 7. `env`: 传递给容器的环境变量，可以通过此字段去定义 Seata Server 的配置，比如：
 
    ```yaml
-   apiVersion: operator.seata.io/v1alpha1
+   apiVersion: operator.seata.apache.org/v1alpha1
    kind: SeataServer
    metadata:
      name: seata-server
@@ -95,9 +97,9 @@ https://github.com/seata/seata-docker
        resources:
          requests:
            storage: 5Gi
-   	env:
-   		console.user.username: seata
-   		console.user.username: seata
+     env:
+       console.user.username: seata
+       console.user.password: seata
    ```
    
    

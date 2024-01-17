@@ -1,11 +1,12 @@
 /*
-Copyright 1999-2019 Seata.io Group.
+Licensed to the Apache Software Foundation (ASF) under one or more
+contributor license agreements.  See the NOTICE file distributed with
+this work for additional information regarding copyright ownership.
+The ASF licenses this file to You under the Apache License, Version 2.0
+(the "License"); you may not use this file except in compliance with
+the License.  You may obtain a copy of the License at
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-     http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,7 +17,7 @@ limitations under the License.
 
 // Package v1alpha1 contains API Schema definitions for the seata v1alpha1 API group
 // +kubebuilder:object:generate=true
-// +groupName=operator.seata.io
+// +groupName=operator.seata.apache.org
 package v1alpha1
 
 import (
@@ -26,7 +27,7 @@ import (
 
 var (
 	// GroupVersion is group version used to register these objects
-	GroupVersion = schema.GroupVersion{Group: "operator.seata.io", Version: "v1alpha1"}
+	GroupVersion = schema.GroupVersion{Group: "operator.seata.apache.org", Version: "v1alpha1"}
 
 	// SchemeBuilder is used to add go types to the GroupVersionKind scheme
 	SchemeBuilder = &scheme.Builder{GroupVersion: GroupVersion}

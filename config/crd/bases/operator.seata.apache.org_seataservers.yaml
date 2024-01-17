@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.13.0
-  name: seataservers.operator.seata.io
+  name: seataservers.operator.seata.apache.org
 spec:
-  group: operator.seata.io
+  group: operator.seata.apache.org
   names:
     kind: SeataServer
     listKind: SeataServerList

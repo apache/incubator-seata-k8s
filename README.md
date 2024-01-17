@@ -12,7 +12,7 @@ Associated Projects:
 
 ### Usage
 
-We haven't officially released the Controller image yet. To experience deploying Seata Server using the Operator method, follow these steps:
+To experience deploying Seata Server using the Operator method, follow these steps:
 
 1. Clone this repository:
 
@@ -20,7 +20,9 @@ We haven't officially released the Controller image yet. To experience deploying
    git clone https://github.com/apache/incubator-seata-k8s.git
    ```
 
-2. Publish the controller image to a private registry:
+2. (Optional) Build and publish the controller image to a private registry:
+
+   > This step can be skipped, the operator use apache/seata-controller:latest as controller image by default.
 
    ```shell
    IMG=${IMAGE-TO-PUSH} make docker-build docker-push
@@ -30,7 +32,7 @@ We haven't officially released the Controller image yet. To experience deploying
 
    ```shell
    eval $(minikube docker-env)
-   make docker-build
+   IMG=${IMAGE-TO-PUSH} make docker-build
    ```
 
 3. Deploy Controller, CRD, RBAC, and other resources to the Kubernetes cluster:
@@ -43,7 +45,7 @@ We haven't officially released the Controller image yet. To experience deploying
 4. You can now deploy your CR to the cluster. An example can be found here [seata-server-cluster.yaml](deploy/seata-server-cluster.yaml):
 
    ```yaml
-   apiVersion: operator.seata.io/v1alpha1
+   apiVersion: operator.seata.apache.org/v1alpha1
    kind: SeataServer
    metadata:
      name: seata-server
@@ -62,7 +64,7 @@ We haven't officially released the Controller image yet. To experience deploying
 
 ### Reference
 
-For CRD details, you can visit [operator.seata.io_seataservers.yaml](config/crd/bases/operator.seata.io_seataservers.yaml). Here are some important configurations:
+For CRD details, you can visit [operator.seata.apache.org_seataservers.yaml](config/crd/bases/operator.seata.apache.org_seataservers.yaml). Here are some important configurations:
 
 1. `serviceName`: Used to define the name of the Headless Service deployed by the controller. This will affect how you access the server cluster. In the example above, you can access the Seata Server cluster through `seata-server-0.seata-server-cluster.default.svc`.
 
@@ -79,7 +81,7 @@ For CRD details, you can visit [operator.seata.io_seataservers.yaml](config/crd/
 7. `env`: Environment variables passed to the container. You can use this field to define Seata Server configuration. For example:
 
    ```yaml
-   apiVersion: operator.seata.io/v1alpha1
+   apiVersion: operator.seata.apache.org/v1alpha1
    kind: SeataServer
    metadata:
      name: seata-server
@@ -92,7 +94,7 @@ For CRD details, you can visit [operator.seata.io_seataservers.yaml](config/crd/
            storage: 5Gi
      env:
        console.user.username: seata
-       console.user.username: seata
+       console.user.password: seata
    ```
 
 ## Method 2: Example without Using Operator

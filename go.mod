@@ -1,4 +1,4 @@
-module github.com/seata/seata-k8s
+module github.com/apache/seata-k8s
 
 go 1.19
 

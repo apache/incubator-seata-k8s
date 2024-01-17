@@ -44,7 +44,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - operator.seata.io
+  - operator.seata.apache.org
   resources:
   - seataservers
   verbs:
@@ -56,13 +56,13 @@ rules:
   - update
   - watch
 - apiGroups:
-  - operator.seata.io
+  - operator.seata.apache.org
   resources:
   - seataservers/finalizers
   verbs:
   - update
 - apiGroups:
-  - operator.seata.io
+  - operator.seata.apache.org
   resources:
   - seataservers/status
   verbs:
