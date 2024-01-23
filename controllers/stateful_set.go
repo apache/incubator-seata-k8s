@@ -63,6 +63,22 @@ func initStatefulSet(s *seatav1alpha1.SeataServer) *appsv1.StatefulSet {
 	return statefulSet
 }
 
+const PythonScript = `
+import time
+import socket
+
+print('Waiting $SEATA_IP to be resolved...')
+while True:
+	try:
+		ip = socket.gethostbyname('$SEATA_IP')
+		print('Resolve $SEATA_IP to', ip)
+	except:
+		print('Cannot resolve $SEATA_IP, wait 2 seconds', flush=True)
+		time.sleep(2)
+		continue
+	exit(0)
+`
+
 func updateStatefulSet(ctx context.Context, statefulSet *appsv1.StatefulSet, s *seatav1alpha1.SeataServer) {
 	logger := log.FromContext(ctx)
 	var envs []apiv1.EnvVar
@@ -85,10 +101,9 @@ func updateStatefulSet(ctx context.Context, statefulSet *appsv1.StatefulSet, s *
 		},
 		Args: []string{
 			"-c",
-			fmt.Sprintf(
-				"export SEATA_IP=$(HOST_NAME).%s; /bin/bash /seata-server-entrypoint.sh;",
-				s.Spec.ServiceName,
-			),
+			fmt.Sprintf("export SEATA_IP=$(HOST_NAME).%s;", s.Spec.ServiceName) +
+				fmt.Sprintf("python3 -c \"\n%s\n\";", PythonScript) +
+				"/bin/bash /seata-server-entrypoint.sh;",
 		},
 		Ports: []apiv1.ContainerPort{
 			{Name: "service-port", ContainerPort: s.Spec.Ports.ServicePort},
