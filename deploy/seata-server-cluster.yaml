@@ -6,7 +6,7 @@ metadata:
 spec:
   serviceName: seata-server-cluster
   replicas: 2
-  image: seataio/seata-server:latest
+  image: seataio/seata-server:2.0.0
   store:
     resources:
       requests:
