@@ -46,7 +46,9 @@ type SeataServerSpec struct {
 
 // SeataServerStatus defines the observed state of SeataServer
 type SeataServerStatus struct {
-	Deployed bool `json:"deployed"`
+	Synchronized  bool  `json:"synchronized"`
+	Replicas      int32 `json:"replicas"`
+	ReadyReplicas int32 `json:"readyReplicas,omitempty"`
 }
 
 //+kubebuilder:object:root=true

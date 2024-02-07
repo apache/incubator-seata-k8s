@@ -176,10 +176,17 @@ spec:
           status:
             description: SeataServerStatus defines the observed state of SeataServer
             properties:
-              deployed:
+              readyReplicas:
+                format: int32
+                type: integer
+              replicas:
+                format: int32
+                type: integer
+              synchronized:
                 type: boolean
             required:
-            - deployed
+            - replicas
+            - synchronized
             type: object
         type: object
     served: true
