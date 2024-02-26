@@ -36,13 +36,14 @@ type rspData struct {
 func changeCluster(s *seatav1alpha1.SeataServer, i int32) error {
 	client := http.Client{}
 	host := fmt.Sprintf("%s-%d.%s.%s.svc:%d", s.Name, i, s.Spec.ServiceName, s.Namespace, s.Spec.Ports.ConsolePort)
-	username, ok := s.Spec.Env["console.user.username"]
-	if !ok {
-		username = "seata"
-	}
-	password, ok := s.Spec.Env["console.user.password"]
-	if !ok {
-		password = "seata"
+	username, password := "seata", "seata"
+	for _, env := range s.Spec.Env {
+		if env.Name == "console.user.username" {
+			username = "seata"
+		}
+		if env.Name == "console.user.password" {
+			password = "seata"
+		}
 	}
 
 	values := map[string]string{"username": username, "password": password}

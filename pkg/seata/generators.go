@@ -137,8 +137,8 @@ func MakeStatefulSet(s *seatav1alpha1.SeataServer) *appsv1.StatefulSet {
 
 	addr := utils.ConcatRaftServerAddress(s)
 	envs = append(envs, apiv1.EnvVar{Name: "server.raft.serverAddr", Value: addr})
-	for k, v := range s.Spec.Env {
-		envs = append(envs, apiv1.EnvVar{Name: k, Value: v})
+	for _, env := range s.Spec.Env {
+		envs = append(envs, env)
 	}
 	container.Env = envs
 
