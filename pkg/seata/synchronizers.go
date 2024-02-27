@@ -33,18 +33,9 @@ type rspData struct {
 	Success bool   `json:"success"`
 }
 
-func changeCluster(s *seatav1alpha1.SeataServer, i int32) error {
+func changeCluster(s *seatav1alpha1.SeataServer, i int32, username string, password string) error {
 	client := http.Client{}
 	host := fmt.Sprintf("%s-%d.%s.%s.svc:%d", s.Name, i, s.Spec.ServiceName, s.Namespace, s.Spec.Ports.ConsolePort)
-	username, password := "seata", "seata"
-	for _, env := range s.Spec.Env {
-		if env.Name == "console.user.username" {
-			username = "seata"
-		}
-		if env.Name == "console.user.password" {
-			password = "seata"
-		}
-	}
 
 	values := map[string]string{"username": username, "password": password}
 	jsonValue, _ := json.Marshal(values)
@@ -101,7 +92,7 @@ func changeCluster(s *seatav1alpha1.SeataServer, i int32) error {
 	return nil
 }
 
-func SyncRaftCluster(ctx context.Context, s *seatav1alpha1.SeataServer) error {
+func SyncRaftCluster(ctx context.Context, s *seatav1alpha1.SeataServer, username string, password string) error {
 	logger := log.FromContext(ctx)
 	group, childContext := errgroup.WithContext(ctx)
 
@@ -112,7 +103,7 @@ func SyncRaftCluster(ctx context.Context, s *seatav1alpha1.SeataServer) error {
 			case <-childContext.Done():
 				return nil
 			default:
-				err := changeCluster(s, finalI)
+				err := changeCluster(s, finalI, username, password)
 				if err != nil {
 					logger.Error(err, fmt.Sprintf("fail to SyncRaftCluster at %d-th pod", finalI))
 				}
