@@ -24,21 +24,6 @@ https://github.com/seata/seata-docker
    git clone https://github.com/apache/incubator-seata-k8s.git
    ```
 
-2. (可选) 发布 controller 镜像到私有 Registry
-
-   > 这一步可以跳过，本 Operator 默认使用 `apache/seata-controller:latest` 作为 controller 镜像
-
-   ```shell
-   IMG=${IMAGE-TO-PUSH} make docker-build docker-push
-   ```
-
-   如果你正在使用 minikube 进行测试，可以通过以下命令免去上述的发布流程
-
-   ```shell
-   eval $(minikube docker-env)
-   IMG=${IMAGE-TO-PUSH} make docker-build
-   ```
-
 3. 部署 Controller, CRD, RBAC 等资源到 Kubernetes 集群
 
    ```shell
@@ -104,7 +89,38 @@ https://github.com/seata/seata-docker
    
    
 
+### For Developer
 
+要在本地调试此 Operator，我们建议您使用像 Minikube 这样的测试 k8s 环境。
+
+1. 方法 1：修改代码并构建控制器镜像：
+
+   假设您正在使用 Minikube 进行测试，
+
+   ```shell
+   eval $(minikube docker-env)
+   make docker-build deploy
+   ```
+
+2. 方法 2：不构建镜像进行本地调试
+
+   您需要使用 Telepresence 将流量代理到 k8s 集群，参见[Telepresence 教程](https://www.telepresence.io/docs/latest/quick-start/)来安装其 CLI 工具和[Traffic Manager](https://www.getambassador.io/docs/telepresence/latest/install/manager#install-the-traffic-manager)。安装 Telepresence 后，可以按照以下命令连接到 Minikube：
+
+   ```shell
+   telepresence connect
+   # 检查流量管理器是否连接
+   telepresence status
+   ```
+
+   通过执行上述命令，您可以使用集群内 DNS 解析并将请求代理到集群。然后您可以使用 IDE 在本地运行或调试：
+
+   ```shell
+   # 首先确保生成适当的资源
+   make manifests generate fmt vet
+   
+   go run .
+   # 或者您也可以使用 IDE 在本地运行
+   ```
 
 ## 方式二: 不使用 Operator 的示例
 
