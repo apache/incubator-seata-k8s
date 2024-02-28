@@ -78,7 +78,7 @@ type ContainerSpec struct {
 	ContainerName string `json:"containerName"`
 	Image         string `json:"image"`
 	// +kubebuilder:validation:Optional
-	Env map[string]string `json:"env"`
+	Env []apiv1.EnvVar `json:"env"`
 	// +kubebuilder:validation:Optional
 	Resources apiv1.ResourceRequirements `json:"resources"`
 }

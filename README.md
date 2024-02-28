@@ -93,8 +93,21 @@ For CRD details, you can visit [operator.seata.apache.org_seataservers.yaml](con
          requests:
            storage: 5Gi
      env:
-       console.user.username: seata
-       console.user.password: seata
+     - name: console.user.username
+       value: seata
+     - name: console.user.password
+       valueFrom:
+         secretKeyRef:
+           name: seata
+           key: password
+   ---
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: seata
+   type: Opaque
+   data:
+     password: seata
    ```
 
 ## Method 2: Example without Using Operator
