@@ -119,7 +119,7 @@ func (r *SeataServerReconciler) reconcileHeadlessService(ctx context.Context, s 
 	} else if err != nil {
 		return err
 	} else {
-		logger.Info(fmt.Sprintf("Updating existing SeataServer StatefulSet {%s:%s}",
+		logger.Info(fmt.Sprintf("Updating existing SeataServer Service {%s:%s}",
 			foundSvc.Namespace, foundSvc.Name))
 
 		seata.SyncService(foundSvc, svc)
