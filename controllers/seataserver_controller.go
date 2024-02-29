@@ -213,7 +213,7 @@ func (r *SeataServerReconciler) reconcileFinalizers(ctx context.Context, instanc
 	if instance.DeletionTimestamp.IsZero() {
 		if !utils.ContainsString(instance.ObjectMeta.Finalizers, utils.SeataFinalizer) {
 			instance.ObjectMeta.Finalizers = append(instance.ObjectMeta.Finalizers, utils.SeataFinalizer)
-			if err = r.Client.Update(context.TODO(), instance); err != nil {
+			if err = r.Client.Update(ctx, instance); err != nil {
 				return err
 			}
 		}
@@ -224,7 +224,7 @@ func (r *SeataServerReconciler) reconcileFinalizers(ctx context.Context, instanc
 				return err
 			}
 			instance.ObjectMeta.Finalizers = utils.RemoveString(instance.ObjectMeta.Finalizers, utils.SeataFinalizer)
-			if err = r.Client.Update(context.TODO(), instance); err != nil {
+			if err = r.Client.Update(ctx, instance); err != nil {
 				return err
 			}
 		}
@@ -298,7 +298,7 @@ func (r *SeataServerReconciler) deletePVC(ctx context.Context, pvcItem apiv1.Per
 		},
 	}
 	logger.Info(fmt.Sprintf("Deleting PVC with name %s", pvcItem.Name))
-	err := r.Client.Delete(context.TODO(), pvcDelete)
+	err := r.Client.Delete(ctx, pvcDelete)
 	if err != nil {
 		logger.Error(err, fmt.Sprintf("Error deleting PVC with name %s", pvcDelete))
 	}
