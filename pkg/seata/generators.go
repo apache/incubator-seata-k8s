@@ -68,6 +68,8 @@ while True:
 	exit(0)
 `
 
+const pvcName = "seata-store"
+
 func MakeStatefulSet(s *seatav1alpha1.SeataServer) *appsv1.StatefulSet {
 	labels := makeLabels(s.Name)
 	statefulSet := &appsv1.StatefulSet{
@@ -82,11 +84,11 @@ func MakeStatefulSet(s *seatav1alpha1.SeataServer) *appsv1.StatefulSet {
 			ServiceName: s.Spec.ServiceName,
 			Template:    apiv1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{Labels: labels}},
 			VolumeClaimTemplates: []apiv1.PersistentVolumeClaim{{
-				ObjectMeta: metav1.ObjectMeta{Name: "seata-store"},
-				Spec: apiv1.PersistentVolumeClaimSpec{
-					AccessModes: []apiv1.PersistentVolumeAccessMode{"ReadWriteOnce"},
-					Resources:   s.Spec.Store.Resources,
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   pvcName,
+					Labels: map[string]string{"app": s.GetName(), "uid": string(s.UID)},
 				},
+				Spec: s.Spec.Persistence.PersistentVolumeClaimSpec,
 			}},
 		},
 	}
