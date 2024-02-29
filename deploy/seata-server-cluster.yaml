@@ -5,9 +5,7 @@ metadata:
   namespace: default
 spec:
   serviceName: seata-server-cluster
-  replicas: 2
-  image: seataio/seata-server:2.0.0
-  store:
-    resources:
-      requests:
-        storage: 5Gi
+  replicas: 1
+  image: seataio/seata-server:latest
+  persistence:
+    volumeReclaimPolicy: Delete
