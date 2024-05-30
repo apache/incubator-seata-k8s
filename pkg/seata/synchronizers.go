@@ -6,14 +6,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+
 	seatav1alpha1 "github.com/apache/seata-k8s/api/v1alpha1"
 	"github.com/apache/seata-k8s/pkg/utils"
 	"golang.org/x/sync/errgroup"
-	"io"
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
-	"net/http"
-	"net/url"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -52,6 +53,7 @@ func changeCluster(s *seatav1alpha1.SeataServer, i int32) error {
 	if err != nil {
 		return err
 	}
+	defer rsp.Body.Close()
 
 	d := &rspData{}
 	var tokenStr string
@@ -79,6 +81,7 @@ func changeCluster(s *seatav1alpha1.SeataServer, i int32) error {
 	if err != nil {
 		return err
 	}
+	defer rsp.Body.Close()
 
 	d = &rspData{}
 	if rsp.StatusCode != http.StatusOK {
