@@ -56,6 +56,8 @@ const RequeueSeconds = 10
 //+kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch
+//+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
+//+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -195,7 +197,22 @@ func (r *SeataServerReconciler) updateStatefulSet(ctx context.Context, s *seatav
 		s.Status.Synchronized = false
 	}
 	if readySize == newSize && !s.Status.Synchronized {
-		if err = seata.SyncRaftCluster(ctx, s); err != nil {
+		username, password := "seata", "seata"
+		for _, env := range s.Spec.Env {
+			if env.Name == "console.user.username" {
+				username, err = seata.FetchEnvVar(ctx, r.Client, s, env)
+				if err != nil {
+					logger.Error(err, "Failed to fetch Env console.user.username")
+				}
+			}
+			if env.Name == "console.user.password" {
+				password, err = seata.FetchEnvVar(ctx, r.Client, s, env)
+				if err != nil {
+					logger.Error(err, "Failed to fetch Env console.user.password")
+				}
+			}
+		}
+		if err = seata.SyncRaftCluster(ctx, s, username, password); err != nil {
 			logger.Error(err, "Failed to synchronize the raft cluster")
 			s.Status.Synchronized = false
 		} else {
