@@ -19,11 +19,14 @@ package v1alpha1
 
 import (
 	apiv1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+const (
+	DefaultSeataSessionStorageVolumeSize = "5Gi"
+	DefaultSeataServerImage              = "seataio/seata-server:latest"
+)
 
 // SeataServerSpec defines the desired state of SeataServer
 type SeataServerSpec struct {
@@ -35,13 +38,32 @@ type SeataServerSpec struct {
 	Replicas int32 `json:"replicas"`
 
 	// +kubebuilder:validation:Optional
-	// +kubebuilder:default=seata-server
+	// +kubebuilder:default=seata-server-cluster
 	ServiceName string `json:"serviceName"`
 
 	// +kubebuilder:validation:Optional
 	Ports Ports `json:"ports,omitempty"`
 
-	Store Store `json:"store"`
+	// +kubebuilder:validation:Optional
+	Persistence Persistence `json:"persistence,omitempty"`
+}
+
+func (s *SeataServerSpec) withDefaults() (changed bool) {
+	if s.ContainerName == "" {
+		s.ContainerName = "seata-server"
+		changed = true
+	}
+	if s.ServiceName == "" {
+		s.ServiceName = "seata-server-cluster"
+		changed = true
+	}
+	if s.Image == "" {
+		s.Image = DefaultSeataServerImage
+		changed = true
+	}
+	changed = s.Ports.withDefaults() || changed
+	changed = s.Persistence.withDefaults() || changed
+	return changed
 }
 
 // SeataServerStatus defines the observed state of SeataServer
@@ -63,6 +85,10 @@ type SeataServer struct {
 	Status SeataServerStatus `json:"status,omitempty"`
 }
 
+func (s *SeataServer) WithDefaults() bool {
+	return s.Spec.withDefaults()
+}
+
 //+kubebuilder:object:root=true
 
 // SeataServerList contains a list of SeataServer
@@ -76,7 +102,9 @@ type ContainerSpec struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default=seata-server
 	ContainerName string `json:"containerName"`
-	Image         string `json:"image"`
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default="seataio/seata-server:latest"
+	Image string `json:"image"`
 	// +kubebuilder:validation:Optional
 	Env []apiv1.EnvVar `json:"env"`
 	// +kubebuilder:validation:Optional
@@ -95,8 +123,52 @@ type Ports struct {
 	RaftPort int32 `json:"raftPort"`
 }
 
-type Store struct {
-	Resources apiv1.ResourceRequirements `json:"resources"`
+func (p *Ports) withDefaults() bool {
+	if *p == (Ports{}) {
+		p.ConsolePort = 7091
+		p.ServicePort = 8091
+		p.RaftPort = 9091
+		return true
+	}
+	return false
+}
+
+type Persistence struct {
+	// VolumeReclaimPolicy is a seata operator configuration. If it's set to Delete,
+	// the corresponding PVCs will be deleted by the operator when seata server cluster is deleted.
+	// The default value is Retain.
+	// +kubebuilder:validation:Enum="Delete";"Retain"
+	VolumeReclaimPolicy VolumeReclaimPolicy `json:"volumeReclaimPolicy,omitempty"`
+	// PersistentVolumeClaimSpec is the spec to describe PVC for the container
+	// This field is optional. If no PVC is specified default persistent volume
+	// will get created.
+	PersistentVolumeClaimSpec apiv1.PersistentVolumeClaimSpec `json:"spec,omitempty"`
+}
+
+type VolumeReclaimPolicy string
+
+const (
+	VolumeReclaimPolicyRetain VolumeReclaimPolicy = "Retain"
+	VolumeReclaimPolicyDelete VolumeReclaimPolicy = "Delete"
+)
+
+func (p *Persistence) withDefaults() (changed bool) {
+	if p.VolumeReclaimPolicy != VolumeReclaimPolicyDelete && p.VolumeReclaimPolicy != VolumeReclaimPolicyRetain {
+		changed = true
+		p.VolumeReclaimPolicy = VolumeReclaimPolicyRetain
+	}
+	p.PersistentVolumeClaimSpec.AccessModes = []apiv1.PersistentVolumeAccessMode{
+		apiv1.ReadWriteOnce,
+	}
+
+	storage, _ := p.PersistentVolumeClaimSpec.Resources.Requests["storage"]
+	if storage.IsZero() {
+		p.PersistentVolumeClaimSpec.Resources.Requests = apiv1.ResourceList{
+			apiv1.ResourceStorage: resource.MustParse(DefaultSeataSessionStorageVolumeSize),
+		}
+		changed = true
+	}
+	return changed
 }
 
 func init() {

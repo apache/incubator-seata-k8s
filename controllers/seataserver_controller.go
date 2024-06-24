@@ -21,9 +21,11 @@ import (
 	"context"
 	"fmt"
 	"github.com/apache/seata-k8s/pkg/seata"
+	"github.com/apache/seata-k8s/pkg/utils"
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -78,11 +80,21 @@ func (r *SeataServerReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		logger.Error(err, fmt.Sprintf("Failed to get resource SeataServer(%v)", req.NamespacedName))
 		return ctrl.Result{}, err
 	}
-	setupDefaults(s)
+
+	changed := s.WithDefaults()
+	if changed {
+		logger.Info(fmt.Sprintf("Setting default values for SeataServer(%v)", req.NamespacedName))
+		if err := r.Client.Update(ctx, s); err != nil {
+			logger.Error(err, fmt.Sprintf("Failed to update resource SeataServer(%v)", req.NamespacedName))
+			return reconcile.Result{}, err
+		}
+		return reconcile.Result{Requeue: true}, nil
+	}
 
 	for _, fun := range []reconcileFun{
 		r.reconcileHeadlessService,
 		r.reconcileStatefulSet,
+		r.reconcileFinalizers,
 	} {
 		if err := fun(ctx, s); err != nil {
 			return reconcile.Result{}, err
@@ -211,6 +223,104 @@ func (r *SeataServerReconciler) updateStatefulSet(ctx context.Context, s *seatav
 	return r.Client.Status().Update(ctx, s)
 }
 
+func (r *SeataServerReconciler) reconcileFinalizers(ctx context.Context, instance *seatav1alpha1.SeataServer) (err error) {
+	if instance.Spec.Persistence.VolumeReclaimPolicy != seatav1alpha1.VolumeReclaimPolicyDelete {
+		return nil
+	}
+	if instance.DeletionTimestamp.IsZero() {
+		if !utils.ContainsString(instance.ObjectMeta.Finalizers, utils.SeataFinalizer) {
+			instance.ObjectMeta.Finalizers = append(instance.ObjectMeta.Finalizers, utils.SeataFinalizer)
+			if err = r.Client.Update(ctx, instance); err != nil {
+				return err
+			}
+		}
+		return r.cleanupOrphanPVCs(ctx, instance)
+	} else {
+		if utils.ContainsString(instance.ObjectMeta.Finalizers, utils.SeataFinalizer) {
+			if err = r.cleanUpAllPVCs(ctx, instance); err != nil {
+				return err
+			}
+			instance.ObjectMeta.Finalizers = utils.RemoveString(instance.ObjectMeta.Finalizers, utils.SeataFinalizer)
+			if err = r.Client.Update(ctx, instance); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (r *SeataServerReconciler) cleanupOrphanPVCs(ctx context.Context, s *seatav1alpha1.SeataServer) (err error) {
+	logger := log.FromContext(ctx)
+	// this check should make sure we do not delete the PVCs before the STS has scaled down
+	if s.Status.ReadyReplicas == s.Spec.Replicas {
+		pvcCount, err := r.getPVCCount(ctx, s)
+		if err != nil {
+			return err
+		}
+		logger.Info(fmt.Sprintf("cleanupOrphanPVCs with PVC count %d and ReadyReplicas count %d", pvcCount, s.Status.ReadyReplicas))
+		if pvcCount > int(s.Spec.Replicas) {
+			pvcList, err := r.getPVCList(ctx, s)
+			if err != nil {
+				return err
+			}
+			for _, pvcItem := range pvcList.Items {
+				// delete only Orphan PVCs
+				if utils.IsPVCOrphan(pvcItem.Name, s.Spec.Replicas) {
+					r.deletePVC(ctx, pvcItem)
+				}
+			}
+		}
+	}
+	return nil
+}
+func (r *SeataServerReconciler) getPVCCount(ctx context.Context, s *seatav1alpha1.SeataServer) (pvcCount int, err error) {
+	pvcList, err := r.getPVCList(ctx, s)
+	if err != nil {
+		return -1, err
+	}
+	pvcCount = len(pvcList.Items)
+	return pvcCount, nil
+}
+
+func (r *SeataServerReconciler) getPVCList(ctx context.Context, s *seatav1alpha1.SeataServer) (pvList apiv1.PersistentVolumeClaimList, err error) {
+	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: map[string]string{"app": s.GetName(), "uid": string(s.UID)},
+	})
+	pvclistOps := &client.ListOptions{
+		Namespace:     s.Namespace,
+		LabelSelector: selector,
+	}
+	pvcList := &apiv1.PersistentVolumeClaimList{}
+	err = r.Client.List(ctx, pvcList, pvclistOps)
+	return *pvcList, err
+}
+
+func (r *SeataServerReconciler) cleanUpAllPVCs(ctx context.Context, s *seatav1alpha1.SeataServer) (err error) {
+	pvcList, err := r.getPVCList(ctx, s)
+	if err != nil {
+		return err
+	}
+	for _, pvcItem := range pvcList.Items {
+		r.deletePVC(ctx, pvcItem)
+	}
+	return nil
+}
+
+func (r *SeataServerReconciler) deletePVC(ctx context.Context, pvcItem apiv1.PersistentVolumeClaim) {
+	logger := log.FromContext(ctx)
+	pvcDelete := &apiv1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      pvcItem.Name,
+			Namespace: pvcItem.Namespace,
+		},
+	}
+	logger.Info(fmt.Sprintf("Deleting PVC with name %s", pvcItem.Name))
+	err := r.Client.Delete(ctx, pvcDelete)
+	if err != nil {
+		logger.Error(err, fmt.Sprintf("Error deleting PVC with name %s", pvcDelete))
+	}
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *SeataServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
@@ -219,12 +329,4 @@ func (r *SeataServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&apiv1.Service{}).
 		WithEventFilter(predicate.GenerationChangedPredicate{}).
 		Complete(r)
-}
-
-func setupDefaults(s *seatav1alpha1.SeataServer) {
-	if s.Spec.Ports == (seatav1alpha1.Ports{}) {
-		s.Spec.Ports.ConsolePort = 7091
-		s.Spec.Ports.ServicePort = 8091
-		s.Spec.Ports.RaftPort = 9091
-	}
 }
