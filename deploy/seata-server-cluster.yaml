@@ -5,9 +5,25 @@ metadata:
   namespace: default
 spec:
   serviceName: seata-server-cluster
-  replicas: 2
+  replicas: 1
   image: seataio/seata-server:latest
   store:
     resources:
       requests:
         storage: 5Gi
+  env:
+    - name: console.user.username
+      value: seata
+    - name: console.user.password
+      valueFrom:
+        secretKeyRef:
+          name: seata
+          key: password
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: seata
+type: Opaque
+data:
+  password: MTIzNDU2
