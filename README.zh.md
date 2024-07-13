@@ -43,13 +43,15 @@ https://github.com/seata/seata-docker
      serviceName: seata-server-cluster
      replicas: 3
      image: seataio/seata-server:latest
-     store:
-       resources:
-         requests:
-           storage: 5Gi
+     persistence:
+   	  volumeReclaimPolicy: Retain
+       spec:
+         resources:
+           requests:
+           	storage: 5Gi
    
    ```
-
+   
    对于上面这个 CR 的例子而言，如果一切正常的话，controller 将会部署 3 个 StatefulSet 资源和一个 Headless Service 到集群中；在集群中你可以通过 seata-server-0.seata-server-cluster.default.svc 对 Seata Server 集群进行访问。
 
 ### Reference
@@ -66,9 +68,11 @@ https://github.com/seata/seata-docker
 
 5. `resources`: 用于定义容器的资源要求
 
-6. `store.resources`: 用于定义挂载的存储资源要求
+6. `persistence.spec`: 用于定义挂载的存储资源要求
 
-7. `env`: 传递给容器的环境变量，可以通过此字段去定义 Seata Server 的配置，比如：
+7. `persistence.volumeReclaimPolicy`: 用于控制存储回收行为，允许的选项有 `Retain` 或者 `Delete`，分别代表了在 CR 删除之后保存存储卷或删除存储卷
+
+8. `env`: 传递给容器的环境变量，可以通过此字段去定义 Seata Server 的配置，比如：
 
    ```yaml
    apiVersion: operator.seata.apache.org/v1alpha1
@@ -99,7 +103,7 @@ https://github.com/seata/seata-docker
    data:
      password: seata
    ```
-   
+
    
 
 ### For Developer

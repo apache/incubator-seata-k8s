@@ -39,12 +39,14 @@ To deploy Seata Server using the Operator method, follow these steps:
      serviceName: seata-server-cluster
      replicas: 3
      image: seataio/seata-server:latest
-     store:
-       resources:
-         requests:
-           storage: 5Gi
+     persistence:
+   	  volumeReclaimPolicy: Retain
+       spec:
+         resources:
+           requests:
+           	storage: 5Gi
    ```
-
+   
    For the example above, if everything is correct, the controller will deploy 3 StatefulSet resources and a Headless Service to the cluster. You can access the Seata Server cluster in the cluster through `seata-server-0.seata-server-cluster.default.svc`.
 
 ### Reference
@@ -61,9 +63,11 @@ For CRD details, you can visit [operator.seata.apache.org_seataservers.yaml](con
 
 5. `resources`: Used to define container resource requirements.
 
-6. `store.resources`: Used to define mounted storage resource requirements.
+6. `persistence.spec`: Used to define mounted storage resource requirements.
 
-7. `env`: Environment variables passed to the container. You can use this field to define Seata Server configuration. For example:
+7. `persistence.volumeReclaimPolicy`: Used to control volume reclaim behavior, possible choices include `Retain` or `Delete`, which infer retain volumes or delete volumes after deletion respectively.
+
+8. `env`: Environment variables passed to the container. You can use this field to define Seata Server configuration. For example:
 
    ```yaml
    apiVersion: operator.seata.apache.org/v1alpha1
