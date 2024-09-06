@@ -7,6 +7,8 @@ spec:
   serviceName: seata-server-cluster
   replicas: 1
   image: seataio/seata-server:latest
+  persistence:
+    volumeReclaimPolicy: Delete
   store:
     resources:
       requests:
