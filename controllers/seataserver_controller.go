@@ -20,6 +20,8 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/apache/seata-k8s/pkg/seata"
 	"github.com/apache/seata-k8s/pkg/utils"
 	appsv1 "k8s.io/api/apps/v1"
@@ -34,7 +36,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"time"
 
 	seatav1alpha1 "github.com/apache/seata-k8s/api/v1alpha1"
 )
@@ -110,7 +111,7 @@ func (r *SeataServerReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	return ctrl.Result{}, nil
 }
 
-func (r *SeataServerReconciler) reconcileHeadlessService(ctx context.Context, s *seatav1alpha1.SeataServer) (err error) {
+func (r *SeataServerReconciler) reconcileHeadlessService(ctx context.Context, s *seatav1alpha1.SeataServer) error {
 	logger := log.FromContext(ctx)
 
 	svc := seata.MakeHeadlessService(s)
@@ -118,34 +119,32 @@ func (r *SeataServerReconciler) reconcileHeadlessService(ctx context.Context, s 
 		return err
 	}
 	foundSvc := &apiv1.Service{}
-	err = r.Client.Get(ctx, types.NamespacedName{
+	err := r.Client.Get(ctx, types.NamespacedName{
 		Name:      svc.Name,
 		Namespace: svc.Namespace,
 	}, foundSvc)
-	if err != nil && errors.IsNotFound(err) {
-		logger.Info(fmt.Sprintf("Creating a new SeataServer Service {%s:%s}",
-			svc.Namespace, svc.Name))
-		err = r.Client.Create(ctx, svc)
-		if err != nil {
-			return err
+	if err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info(fmt.Sprintf("Creating a new SeataServer Service {%s:%s}",
+				svc.Namespace, svc.Name))
+			return r.Client.Create(ctx, svc)
 		}
-		return nil
-	} else if err != nil {
 		return err
-	} else {
+	} 
 		logger.Info(fmt.Sprintf("Updating existing SeataServer Service {%s:%s}",
 			foundSvc.Namespace, foundSvc.Name))
 
 		seata.SyncService(foundSvc, svc)
-		err = r.Client.Update(ctx, foundSvc)
-		if err != nil {
-			return err
-		}
+		return r.Client.Update(ctx, foundSvc)
 	}
-	return nil
+
+	logger.Info(fmt.Sprintf("Updating existing SeataServer StatefulSet {%s:%s}",
+		foundSvc.Namespace, foundSvc.Name))
+	seata.SyncService(foundSvc, svc)
+	return r.Client.Update(ctx, foundSvc)
 }
 
-func (r *SeataServerReconciler) reconcileStatefulSet(ctx context.Context, s *seatav1alpha1.SeataServer) (err error) {
+func (r *SeataServerReconciler) reconcileStatefulSet(ctx context.Context, s *seatav1alpha1.SeataServer) error {
 	logger := log.FromContext(ctx)
 
 	sts := seata.MakeStatefulSet(s)
@@ -153,28 +152,19 @@ func (r *SeataServerReconciler) reconcileStatefulSet(ctx context.Context, s *sea
 		return err
 	}
 	foundSts := &appsv1.StatefulSet{}
-	err = r.Client.Get(ctx, types.NamespacedName{
+	err := r.Client.Get(ctx, types.NamespacedName{
 		Name:      sts.Name,
 		Namespace: sts.Namespace,
 	}, foundSts)
-	if err != nil && errors.IsNotFound(err) {
-		logger.Info(fmt.Sprintf("Creating a new SeataServer StatefulSet {%s:%s}",
-			sts.Namespace, sts.Name))
-		err = r.Client.Create(ctx, sts)
-		if err != nil {
-			return err
+	if err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info(fmt.Sprintf("Creating a new SeataServer StatefulSet {%s:%s}",
+				sts.Namespace, sts.Name))
+			return r.Client.Create(ctx, sts)
 		}
-		return nil
-	} else if err != nil {
 		return err
-	} else {
-		err = r.updateStatefulSet(ctx, s, foundSts, sts)
-		if err != nil {
-			return err
-		}
 	}
-
-	return nil
+	return r.updateStatefulSet(ctx, s, foundSts, sts)
 }
 
 func (r *SeataServerReconciler) updateStatefulSet(ctx context.Context, s *seatav1alpha1.SeataServer,
@@ -195,8 +185,7 @@ func (r *SeataServerReconciler) updateStatefulSet(ctx context.Context, s *seatav
 	newSize := *sts.Spec.Replicas
 	if readySize != newSize {
 		s.Status.Synchronized = false
-	}
-	if readySize == newSize && !s.Status.Synchronized {
+	} else if !s.Status.Synchronized {
 		username, password := "seata", "seata"
 		for _, env := range s.Spec.Env {
 			if env.Name == "console.user.username" {
