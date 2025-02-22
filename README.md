@@ -12,7 +12,7 @@ Associated Projects:
 
 ### Usage
 
-To experience deploying Seata Server using the Operator method, follow these steps:
+To deploy Seata Server using the Operator method, follow these steps:
 
 1. Clone this repository:
 
@@ -20,28 +20,13 @@ To experience deploying Seata Server using the Operator method, follow these ste
    git clone https://github.com/apache/incubator-seata-k8s.git
    ```
 
-2. (Optional) Build and publish the controller image to a private registry:
-
-   > This step can be skipped, the operator use apache/seata-controller:latest as controller image by default.
-
-   ```shell
-   IMG=${IMAGE-TO-PUSH} make docker-build docker-push
-   ```
-
-   If you are using minikube for testing, you can skip the above publishing process with the following command:
-
-   ```shell
-   eval $(minikube docker-env)
-   IMG=${IMAGE-TO-PUSH} make docker-build
-   ```
-
-3. Deploy Controller, CRD, RBAC, and other resources to the Kubernetes cluster:
+2. Deploy Controller, CRD, RBAC, and other resources to the Kubernetes cluster:
 
    ```shell
    make deploy
    kubectl get deployment -n seata-k8s-controller-manager  # check if exists
    ```
-
+   
 4. You can now deploy your CR to the cluster. An example can be found here [seata-server-cluster.yaml](deploy/seata-server-cluster.yaml):
 
    ```yaml
@@ -54,12 +39,14 @@ To experience deploying Seata Server using the Operator method, follow these ste
      serviceName: seata-server-cluster
      replicas: 3
      image: seataio/seata-server:latest
-     store:
-       resources:
-         requests:
-           storage: 5Gi
+     persistence:
+   	  volumeReclaimPolicy: Retain
+       spec:
+         resources:
+           requests:
+           	storage: 5Gi
    ```
-
+   
    For the example above, if everything is correct, the controller will deploy 3 StatefulSet resources and a Headless Service to the cluster. You can access the Seata Server cluster in the cluster through `seata-server-0.seata-server-cluster.default.svc`.
 
 ### Reference
@@ -76,9 +63,11 @@ For CRD details, you can visit [operator.seata.apache.org_seataservers.yaml](con
 
 5. `resources`: Used to define container resource requirements.
 
-6. `store.resources`: Used to define mounted storage resource requirements.
+6. `persistence.spec`: Used to define mounted storage resource requirements.
 
-7. `env`: Environment variables passed to the container. You can use this field to define Seata Server configuration. For example:
+7. `persistence.volumeReclaimPolicy`: Used to control volume reclaim behavior, possible choices include `Retain` or `Delete`, which infer retain volumes or delete volumes after deletion respectively.
+
+8. `env`: Environment variables passed to the container. You can use this field to define Seata Server configuration. For example:
 
    ```yaml
    apiVersion: operator.seata.apache.org/v1alpha1
@@ -109,6 +98,44 @@ For CRD details, you can visit [operator.seata.apache.org_seataservers.yaml](con
    data:
      password: seata
    ```
+
+
+
+### For Developer
+
+To debug this operator locally, we suggest you use a test k8s environment like minikube.
+
+1. Method 1. Modify code and build the controller image:
+
+   Assume you are using minikube for testing,
+
+   ```shell
+   eval $(minikube docker-env)
+   make docker-build deploy
+   ```
+
+2. Method 2. Locally debug without building images
+
+   You need to use telepresence to proxy traffic to the k8s cluster, see [telepresence tutorial](https://www.telepresence.io/docs/latest/quick-start/) to install its cli tool and [traffic manager](https://www.getambassador.io/docs/telepresence/latest/install/manager#install-the-traffic-manager). After installing telepresence, you can connect to minikube by following commands:
+
+   ```shell
+   telepresence connect
+   # Check if traffic manager connected
+   telepresence status
+   ```
+
+   By executing above commands, you can use in-cluster DNS resolution and proxy your requests to the cluster. And then you can use IDE to run or debug locally:
+
+   ```shell
+   # Make sure generate proper resources first
+   make manifests generate fmt vet
+   
+   go run .
+   # Or you can use IDE to run locally instead
+   ```
+
+   
+
 
 ## Method 2: Example without Using Operator
 
@@ -150,3 +177,6 @@ curl -H "Content-Type: application/json" -X POST --data "{\"userId\":\"1\",\"com
 # Business service - Client Seata version too low
 curl -H "Content-Type: application/json" -X POST --data "{\"userId\":\"1\",\"commodityCode\":\"C201901140001\",\"count\":10,\"amount\":100}" cluster-ip:8104/business/dubbo/buy
 ```
+
+
+
