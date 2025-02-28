@@ -9,10 +9,10 @@ spec:
   image: seataio/seata-server:latest
   persistence:
     volumeReclaimPolicy: Delete
-    spec:
-      resources:
-        requests:
-          storage: 5Gi
+  store:
+    resources:
+      requests:
+        storage: 5Gi
   env:
     - name: console.user.username
       value: seata

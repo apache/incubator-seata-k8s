@@ -46,6 +46,9 @@ type SeataServerSpec struct {
 
 	// +kubebuilder:validation:Optional
 	Persistence Persistence `json:"persistence,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	Store Store `json:"store,omitempty"`
 }
 
 func (s *SeataServerSpec) withDefaults() (changed bool) {
@@ -63,6 +66,14 @@ func (s *SeataServerSpec) withDefaults() (changed bool) {
 	}
 	changed = s.Ports.withDefaults() || changed
 	changed = s.Persistence.withDefaults() || changed
+
+	if s.Store.Resources.Requests == nil {
+		s.Store.Resources.Requests = apiv1.ResourceList{
+			apiv1.ResourceStorage: resource.MustParse("5Gi"), // 默认存储大小
+		}
+		changed = true
+	}
+
 	return changed
 }
 
@@ -131,6 +142,13 @@ func (p *Ports) withDefaults() bool {
 		return true
 	}
 	return false
+}
+
+// Store defines the storage configuration for SeataServer
+// +kubebuilder:object:generate=true
+type Store struct {
+	// +kubebuilder:validation:Optional
+	Resources apiv1.ResourceRequirements `json:"resources,omitempty"`
 }
 
 type Persistence struct {
