@@ -67,10 +67,9 @@ func (s *SeataServerSpec) withDefaults() (changed bool) {
 	changed = s.Ports.withDefaults() || changed
 	changed = s.Persistence.withDefaults() || changed
 
-	if s.Store.Resources.Requests == nil {
-		s.Store.Resources.Requests = apiv1.ResourceList{
-			apiv1.ResourceStorage: resource.MustParse("5Gi"), // 默认存储大小
-		}
+	if s.Store.Resources.Requests.Storage == nil {
+		defaultStorage := resource.MustParse("5Gi")
+		s.Store.Resources.Requests.Storage = &defaultStorage
 		changed = true
 	}
 
@@ -148,7 +147,17 @@ func (p *Ports) withDefaults() bool {
 // +kubebuilder:object:generate=true
 type Store struct {
 	// +kubebuilder:validation:Optional
-	Resources apiv1.ResourceRequirements `json:"resources,omitempty"`
+	Resources StorageResources `json:"resources,omitempty"`
+}
+
+type StorageResources struct {
+	// +kubebuilder:validation:Optional
+	Requests ResourceList `json:"requests,omitempty"`
+}
+
+type ResourceList struct {
+	// +kubebuilder:validation:Optional
+	Storage *resource.Quantity `json:"storage,omitempty"`
 }
 
 type Persistence struct {
