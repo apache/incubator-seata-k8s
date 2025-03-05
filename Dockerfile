@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM golang:1.21 as builder
+FROM golang:1.21 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
@@ -9,7 +9,8 @@ COPY go.mod go.mod
 COPY go.sum go.sum
 # cache deps before building and copying source so that we don't need to re-download as much
 # and so that source changes don't invalidate our downloaded layer
-ENV GOPROXY=https://goproxy.cn
+ENV GOPROXY="https://proxy.golang.org,direct"
+ENV GO111MODULE=on
 RUN go mod download
 
 # Copy the go source
