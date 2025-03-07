@@ -461,6 +461,23 @@ spec:
           status:
             description: SeataServerStatus defines the observed state of SeataServer
             properties:
+              errors:
+                items:
+                  description: SeataServerError defines the error of SeataServer
+                  properties:
+                    message:
+                      type: string
+                    timestamp:
+                      format: date-time
+                      type: string
+                    type:
+                      type: string
+                  required:
+                  - message
+                  - timestamp
+                  - type
+                  type: object
+                type: array
               readyReplicas:
                 format: int32
                 type: integer
