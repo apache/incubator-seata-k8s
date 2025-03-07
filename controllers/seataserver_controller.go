@@ -33,7 +33,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -52,8 +51,8 @@ type SeataServerReconciler struct {
 type reconcileFun func(ctx context.Context, s *seatav1alpha1.SeataServer) error
 
 const (
-	RequeueSeconds  = 10
-	MaxErrorRecords = 5
+	RequeueSeconds        = 10
+	MaxRecentErrorRecords = 5
 )
 
 //+kubebuilder:rbac:groups=operator.seata.apache.org,resources=seataservers,verbs=get;list;watch;create;update;patch;delete
@@ -75,7 +74,6 @@ const (
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.14.1/pkg/reconcile
 func (r *SeataServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-
 	s := &seatav1alpha1.SeataServer{}
 	if err := r.Get(ctx, req.NamespacedName, s); err != nil {
 		if errors.IsNotFound(err) {
@@ -273,14 +271,13 @@ func (r *SeataServerReconciler) reconcileFinalizers(ctx context.Context, instanc
 }
 
 func (r *SeataServerReconciler) cleanupOrphanPVCs(ctx context.Context, s *seatav1alpha1.SeataServer) (err error) {
-	logger := log.FromContext(ctx)
 	// this check should make sure we do not delete the PVCs before the STS has scaled down
 	if s.Status.ReadyReplicas == s.Spec.Replicas {
 		pvcCount, err := r.getPVCCount(ctx, s)
 		if err != nil {
 			return err
 		}
-		logger.Info(fmt.Sprintf("cleanupOrphanPVCs with PVC count %d and ReadyReplicas count %d", pvcCount, s.Status.ReadyReplicas))
+		r.Log.Info(fmt.Sprintf("cleanupOrphanPVCs with PVC count %d and ReadyReplicas count %d", pvcCount, s.Status.ReadyReplicas))
 		if pvcCount > int(s.Spec.Replicas) {
 			pvcList, err := r.getPVCList(ctx, s)
 			if err != nil {
@@ -333,17 +330,16 @@ func (r *SeataServerReconciler) cleanUpAllPVCs(ctx context.Context, s *seatav1al
 }
 
 func (r *SeataServerReconciler) deletePVC(ctx context.Context, pvcItem apiv1.PersistentVolumeClaim) {
-	logger := log.FromContext(ctx)
 	pvcDelete := &apiv1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      pvcItem.Name,
 			Namespace: pvcItem.Namespace,
 		},
 	}
-	logger.Info(fmt.Sprintf("Deleting PVC with name %s", pvcItem.Name))
+	r.Log.Info(fmt.Sprintf("Deleting PVC with name %s", pvcItem.Name))
 	err := r.Client.Delete(ctx, pvcDelete)
 	if err != nil {
-		logger.Error(err, fmt.Sprintf("Error deleting PVC with name %s", pvcDelete))
+		r.Log.Error(err, fmt.Sprintf("Error deleting PVC with name %s", pvcDelete))
 	}
 }
 
@@ -360,20 +356,20 @@ func (r *SeataServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // update SeataServer error status
 func (r *SeataServerReconciler) recordError(ctx context.Context, prKey client.ObjectKey, errorType seatav1alpha1.ServerErrorType, errMsg string, err error) error {
 	r.Log.Error(err, errMsg)
-	newError := seatav1alpha1.SeataServerError{
-		Type:      errorType.String(),
-		Message:   errMsg,
-		Timestamp: metav1.Now(),
-	}
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		newError := seatav1alpha1.SeataServerError{
+			Type:      errorType.String(),
+			Message:   errMsg,
+			Timestamp: metav1.Now(),
+		}
 		toUpdate := seatav1alpha1.SeataServer{}
 		err := r.Get(ctx, prKey, &toUpdate)
 		if err != nil {
-			r.Log.Error(err, "update seata server error status ", "prkey", prKey)
+			r.Log.Error(err, "get seata server object error ", "prkey", prKey)
 			return err
 		}
 		// save recently `MaxErrorRecords` error
-		if len(toUpdate.Status.Errors) >= MaxErrorRecords {
+		if len(toUpdate.Status.Errors) >= MaxRecentErrorRecords {
 			toUpdate.Status.Errors = toUpdate.Status.Errors[1:]
 		}
 		toUpdate.Status.Errors = append(toUpdate.Status.Errors, newError)
