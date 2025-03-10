@@ -76,11 +76,33 @@ func (s *SeataServerSpec) withDefaults() (changed bool) {
 	return changed
 }
 
+type ServerErrorType string
+
+const (
+	ErrorTypeK8s_SeataServer     ServerErrorType = "k8s-seata-server"
+	ErrorTypeK8s_HeadlessService ServerErrorType = "k8s-headless-service"
+	ErrorTypeK8s_Pvc             ServerErrorType = "k8s-pvc"
+	ErrorTypeK8s_StatefulSet     ServerErrorType = "k8s-statefulset"
+	ErrorTypeRuntime             ServerErrorType = "runtime"
+)
+
+func (e ServerErrorType) String() string {
+	return string(e)
+}
+
+// SeataServerError defines the error of SeataServer
+type SeataServerError struct {
+	Type      string      `json:"type"`
+	Message   string      `json:"message"`
+	Timestamp metav1.Time `json:"timestamp"`
+}
+
 // SeataServerStatus defines the observed state of SeataServer
 type SeataServerStatus struct {
-	Synchronized  bool  `json:"synchronized"`
-	Replicas      int32 `json:"replicas"`
-	ReadyReplicas int32 `json:"readyReplicas,omitempty"`
+	Synchronized  bool               `json:"synchronized"`
+	Replicas      int32              `json:"replicas"`
+	ReadyReplicas int32              `json:"readyReplicas,omitempty"`
+	Errors        []SeataServerError `json:"errors,omitempty"`
 }
 
 //+kubebuilder:object:root=true
