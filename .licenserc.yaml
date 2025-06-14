@@ -55,6 +55,7 @@ header: # `header` section is configurations for source codes license header.
 
   paths-ignore: # `paths-ignore` are the path list that will be ignored by license-eye.
     - 'licenses'
+    - 'PROJECT'
     - '**/go.mod'
     - '**/go.sum'
     - 'LICENSE'
