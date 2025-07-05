@@ -1,3 +1,18 @@
+ Licensed to the Apache Software Foundation (ASF) under one or more
+ contributor license agreements.  See the NOTICE file distributed with
+ this work for additional information regarding copyright ownership.
+ The ASF licenses this file to You under the Apache License, Version 2.0
+ (the "License"); you may not use this file except in compliance with
+ the License.  You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
 Seata - K8s 开发者指南
 =====================
 
@@ -23,7 +38,55 @@ Seata - K8s 开发者指南
 
 # 自定义资源定义（CRDs）修改指南
 
-### 示例
+### CRD的整体结构
+
+CRD 是 Kubernetes 的扩展机制，允许用户创建自定义资源类型（如SeataServer），就像使用内置资源（如Pod、Service）一样。CRD 定义了资源的结构、验证规则和行为
+
+一个完整的CRD包含以下核心部分：
+
+1. **元数据**（Metadata）：定义资源的名称、组、版本等
+2. **Spec**：用户定义的期望状态
+3. **Status**：控制器维护的实际状态
+4. **验证规则**：使用OpenAPI v3 schema定义字段约束
+
+### Spec与Status的作用
+
+#### Spec（期望状态）
+- 用户通过YAML文件定义，如`deploy/test-seata-server.yaml`
+- 通常包含资源的配置参数（如副本数、镜像、环境变量等）
+- 控制器根据Spec的内容执行操作（如创建Pod、配置服务）
+
+#### Status（实际状态）
+- 由控制器自动更新，反映资源的当前状态
+- 包含运行时信息（如可用副本数、健康检查结果、事件历史）
+- 用户可通过`kubectl get <resource> -o yaml`查看
+
+### 示例：SeataServer CRD的Spec与Status
+
+以下是简化的SeataServer资源结构：
+
+```yaml
+apiVersion: operator.seata.apache.org/v1alpha1
+kind: SeataServer
+metadata:
+  name: test-seata-server
+spec:
+  replicas: 1
+  image: seataio/seata-server:latest
+  serviceName: seata-server-cluster
+  persistence:
+    volumeReclaimPolicy: Delete
+status:
+  replicas: 1
+  availableReplicas: 1
+  phase: Running
+  conditions:
+    - type: Available
+      status: "True"
+      lastTransitionTime: "2023-10-01T12:00:00Z"
+```
+
+### 修改示例
 
 我们以添加一个`Labels`字段开始，这个字段通常用于给资源添加标签
 
@@ -65,6 +128,10 @@ make manifests
 # 安装 CRD 到集群
 make install
 
+# `make install`本质上是通过`kubectl apply`命令将生成的CRD YAML文件（位于`config/crd/bases`目录）应用到Kubernetes集群中。执行该命令前需确保：  
+# 1. 已安装`kubectl`命令行工具（用于与Kubernetes集群交互）；  
+# 2. 本地环境已配置有效的`kubeconfig`（通常位于`~/.kube/config`，或通过`KUBECONFIG`环境变量指定），且该配置具有操作集群CRD的权限。
+
 # 验证 CRD 是否正确安装
 kubectl get crd seataservers.operator.seata.apache.org
 ```
@@ -99,7 +166,7 @@ spec:
 
 
 ```bash
-kubectl apply -f test-seata-server.yamld
+kubectl apply -f test-seata-server.yaml
 ```
 
 
@@ -119,7 +186,7 @@ kubectl get seataservers.operator.seata.apache.org test-seata-server -n default9
 ```bash
 flypiggyyoyoyo@LAPTOP-DTIVSINL:/mnt/d/OpenSource/SeataGo-k8s/incubator-seata-k8s$ kubectl apply -f deploy/test-seata-server.yaml
 seataserver.operator.seata.apache.org/test-seata-server created
-flypiggyyoyoyo@LAPTOP-DTIVSINL:/mnt/d/OpenSource/SeataGo-k8s/incubator-seata-k8s$ kubectl get seataservers.operator.seata.apache.org test-seata-server -n default
+flypiggyyoyoyo@LAPTOP-DTIVSINL:/mnt/d/OpenSource/SeataGo-k8s/incubator-seata-k8s$ kubectl get seataservers.operator.seata.apache.org test-seata-server
 NAME                AGE
 test-seata-server   49s
 ```
@@ -340,11 +407,18 @@ kubectl delete -f deploy/test-seata-server.yaml
 
 这里主要说一下本地环境搭建，在[readme](https://github.com/apache/incubator-seata-k8s/blob/master/README.md)中验证部署控制器等资源的前提是有一个`kubernetes`环境。如果你还没有，推荐使用[kind(kubernetes in docker)启动]([kind – Quick Start]([kind – Quick Start](https://kind.sigs.k8s.io/docs/user/quick-start)))，需要先配置好[docker](https://docs.docker.com/get-started/get-docker/)和[kubectl](https://kubernetes.io/docs/tasks/tools/)，链接中的文档已经很详细了，跟着来即可，亦可根据上文提及的工具名词去网上自己找教程。     
 
-推荐看官方文档，养成学工具看开发文档的习惯。至于具体步骤与各种奇怪的报错笔者不再赘述。
+其他错误请查阅kubebuilder官方文档
 
 ### 日志分析
 
 - 如果某个 Seata Server 出现问题，可以查看日志输出的错误信息，检查是否有事务回滚、连接失败等问题
+
+- 先通过 StatefulSet 获取 Seata 对应的 Pod 名称（Seata 通常以 StatefulSet 部署）
+
+  ```bash
+  kubectl get statefulset -n <namespace>  # 查看 Seata 的 StatefulSet 名称
+  kubectl get pods -n <namespace> | grep <statefulset名称>  # 筛选出对应的 Pod
+  ```
 
 - 使用`kubectl logs`查看`Seata`的`Pod`日志
   
@@ -353,13 +427,6 @@ kubectl delete -f deploy/test-seata-server.yaml
   ```
 
 ### 检查kubernets资源状态
-
-- `Pod`状态
-  如果`Seata Server`的`Pod`处于`Error`或其他异常状态，可以用以下命令来检查`Pod`状态   
-  
-  ```bash
-  kubectl get pods -n <namespace>
-  ```
 
 - 检查服务和端口
   
