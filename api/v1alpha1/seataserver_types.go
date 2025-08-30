@@ -25,7 +25,7 @@ import (
 
 const (
 	DefaultSeataSessionStorageVolumeSize = "5Gi"
-	DefaultSeataServerImage              = "seataio/seata-server:latest"
+	DefaultSeataServerImage              = "apache/seata-server:latest"
 )
 
 // SeataServerSpec defines the desired state of SeataServer
@@ -135,7 +135,7 @@ type ContainerSpec struct {
 	// +kubebuilder:default=seata-server
 	ContainerName string `json:"containerName"`
 	// +kubebuilder:validation:Optional
-	// +kubebuilder:default="seataio/seata-server:latest"
+	// +kubebuilder:default="apache/seata-server:latest"
 	Image string `json:"image"`
 	// +kubebuilder:validation:Optional
 	Env []apiv1.EnvVar `json:"env"`

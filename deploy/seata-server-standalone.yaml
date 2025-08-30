@@ -57,7 +57,7 @@ spec:
     spec:
       containers:
         - name: seata-server
-          image: docker.io/seataio/seata-server:1.7.0
+          image: apache/seata-server:latest
           imagePullPolicy: IfNotPresent
           env:
             - name: SEATA_PORT

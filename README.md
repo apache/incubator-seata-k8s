@@ -54,7 +54,7 @@ To deploy Seata Server using the Operator method, follow these steps:
    spec:
      serviceName: seata-server-cluster
      replicas: 3
-     image: seataio/seata-server:latest
+     image: apache/seata-server:latest
      persistence:
    	  volumeReclaimPolicy: Retain
        spec:
@@ -92,7 +92,7 @@ For CRD details, you can visit [operator.seata.apache.org_seataservers.yaml](con
      name: seata-server
      namespace: default
    spec:
-     image: seataio/seata-server:latest
+     image: apache/seata-server:latest
      store:
        resources:
          requests:

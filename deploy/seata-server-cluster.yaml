@@ -23,7 +23,7 @@ metadata:
 spec:
   serviceName: seata-server-cluster
   replicas: 1
-  image: seataio/seata-server:latest
+  image: apache/seata-server:latest
   persistence:
     volumeReclaimPolicy: Delete
   store:
