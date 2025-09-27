@@ -72,7 +72,7 @@ metadata:
   name: test-seata-server
 spec:
   replicas: 1
-  image: seataio/seata-server:latest
+  image: apache/seata-server:latest
   serviceName: seata-server-cluster
   persistence:
     volumeReclaimPolicy: Delete
@@ -147,7 +147,7 @@ metadata:
 spec:
   serviceName: seata-server-cluster
   replicas: 1
-  image: seataio/seata-server:latest
+  image: apache/seata-server:latest
   persistence:
     volumeReclaimPolicy: Delete
   store:

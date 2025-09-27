@@ -58,7 +58,7 @@ https://github.com/seata/seata-docker
    spec:
      serviceName: seata-server-cluster
      replicas: 3
-     image: seataio/seata-server:latest
+     image: apache/seata-server:latest
      persistence:
    	  volumeReclaimPolicy: Retain
        spec:
@@ -97,7 +97,7 @@ https://github.com/seata/seata-docker
      name: seata-server
      namespace: default
    spec:
-     image: seataio/seata-server:latest
+     image: apache/seata-server:latest
      store:
        resources:
          requests:

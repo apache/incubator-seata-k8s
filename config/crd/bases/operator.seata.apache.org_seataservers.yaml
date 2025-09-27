@@ -162,7 +162,7 @@ spec:
                   type: object
                 type: array
               image:
-                default: seataio/seata-server:latest
+                default: apache/seata-server:latest
                 type: string
               persistence:
                 properties:
