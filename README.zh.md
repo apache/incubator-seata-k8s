@@ -14,184 +14,377 @@
     See the License for the specific language governing permissions and
     limitations under the License.
 -->
+
 # seata-k8s
 
-关联项目:
+[中文文档](README.zh.md) | [English](README.md)
 
-https://github.com/seata/seata
+## 项目概述
 
-https://github.com/seata/seata-samples/tree/docker/springboot-dubbo-fescar
+seata-k8s 是一个用于在 Kubernetes 上部署和管理 [Apache Seata](https://github.com/seata/seata) 分布式事务服务器的 Kubernetes Operator。它提供了一种简化的方式来在 Kubernetes 上部署 Seata Server 集群，并支持自动扩缩容、持久化存储管理和运维简化。
 
-https://github.com/seata/seata-docker
+## 主要特性
 
+- 🚀 **快速部署**：使用 Kubernetes CRD 快速部署 Seata Server 集群
+- 📈 **自动扩缩容**：通过简单的副本配置实现集群扩缩容
+- 💾 **持久化存储**：内置持久化卷支持
+- 🔐 **RBAC 支持**：完整的基于角色的访问控制
+- 🛠️ **开发友好**：包含调试和开发工具
 
+## 关联项目
 
-## 方式一: 使用 Operator
+- [Apache Seata](https://github.com/seata/seata) - 分布式事务框架
+- [Seata 示例](https://github.com/seata/seata-samples/tree/docker/springboot-dubbo-fescar) - 示例实现
+- [Seata Docker](https://github.com/seata/seata-docker) - Docker 镜像仓库
 
+## 目录
 
+- [方式一：使用 Operator](#方式一使用-operator)
+  - [使用指南](#使用指南)
+  - [CRD 配置参考](#crd-配置参考)
+  - [开发者指南](#开发者指南)
+- [方式二：直接部署](#方式二直接部署)
+  - [部署步骤](#部署步骤)
+  - [测试验证](#测试验证)
 
-### Usage
+---
 
-想要体验 Operator 方式部署 Seata Server 可以参照以下方式进行：
+## 方式一：使用 Operator
 
-1. 克隆本仓库
+### 前置要求
 
-   ```shell
-   git clone https://github.com/apache/incubator-seata-k8s.git
-   ```
+- Kubernetes 1.16+ 集群
+- kubectl 已配置可访问集群
+- Make 和 Docker（用于构建镜像）
 
-3. 部署 Controller, CRD, RBAC 等资源到 Kubernetes 集群
+### 使用指南
 
-   ```shell
-   make deploy
-   kubectl get deployment -n seata-k8s-controller-manager  # check if exists
-   ```
+#### 第一步：克隆仓库
 
-4. 此时即可发布你的 CR 到集群当中了，示例可以在这里找到 [seata-server-cluster.yaml](deploy/seata-server-cluster.yaml)
-
-   ```yaml
-   apiVersion: operator.seata.apache.org/v1alpha1
-   kind: SeataServer
-   metadata:
-     name: seata-server
-     namespace: default
-   spec:
-     serviceName: seata-server-cluster
-     replicas: 3
-     image: apache/seata-server:latest
-     persistence:
-   	  volumeReclaimPolicy: Retain
-       spec:
-         resources:
-           requests:
-           	storage: 5Gi
-   
-   ```
-   
-   对于上面这个 CR 的例子而言，如果一切正常的话，controller 将会部署 3 个 StatefulSet 资源和一个 Headless Service 到集群中；在集群中你可以通过 seata-server-0.seata-server-cluster.default.svc 对 Seata Server 集群进行访问。
-
-### Reference
-
-关于 CRD 可以访问  [operator.seata.apache.org_seataservers.yaml](config/crd/bases/operator.seata.apache.org_seataservers.yaml) 以查看详细定义，这里列举出一些重要的配置并进行解读。
-
-1. `serviceName`: 用于定义 controller 部署的 Headless Service 的名称，这会影响你访问 server 集群的方式，比如在之前的示例中，你可以通过 seata-server-0.seata-server-cluster.default.svc 进行访问。
-
-2. `replicas`: 用于定义 Seata Server 的副本数量，你只需要调整该字段即可实现扩缩容，而不需要额外的 HTTP 请求去更改 Seata raft 集群列表
-
-3. `image`: 定义了 Seata Server 的镜像名称
-
-4. `ports`: 属性下会有三个端口需要设定，分别是 `consolePort`,`servicePort`,  `raftPort`，默认分别为 7091, 8091, 9091
-
-5. `resources`: 用于定义容器的资源要求
-
-6. `persistence.spec`: 用于定义挂载的存储资源要求
-
-7. `persistence.volumeReclaimPolicy`: 用于控制存储回收行为，允许的选项有 `Retain` 或者 `Delete`，分别代表了在 CR 删除之后保存存储卷或删除存储卷
-
-8. `env`: 传递给容器的环境变量，可以通过此字段去定义 Seata Server 的配置，比如：
-
-   ```yaml
-   apiVersion: operator.seata.apache.org/v1alpha1
-   kind: SeataServer
-   metadata:
-     name: seata-server
-     namespace: default
-   spec:
-     image: apache/seata-server:latest
-     store:
-       resources:
-         requests:
-           storage: 5Gi
-     env:
-     - name: console.user.username
-       value: seata
-     - name: console.user.password
-       valueFrom:
-         secretKeyRef:
-           name: seata
-           key: password
-   ---
-   apiVersion: v1
-   kind: Secret
-   metadata:
-     name: seata
-   type: Opaque
-   data:
-     password: seata
-   ```
-
-   
-
-### For Developer
-
-要在本地调试此 Operator，我们建议您使用像 Minikube 这样的测试 k8s 环境。
-
-1. 方法 1：修改代码并构建控制器镜像：
-
-   假设您正在使用 Minikube 进行测试，
-
-   ```shell
-   eval $(minikube docker-env)
-   make docker-build deploy
-   ```
-
-2. 方法 2：不构建镜像进行本地调试
-
-   您需要使用 Telepresence 将流量代理到 k8s 集群，参见[Telepresence 教程](https://www.telepresence.io/docs/latest/quick-start/)来安装其 CLI 工具和[Traffic Manager](https://www.getambassador.io/docs/telepresence/latest/install/manager#install-the-traffic-manager)。安装 Telepresence 后，可以按照以下命令连接到 Minikube：
-
-   ```shell
-   telepresence connect
-   # 检查流量管理器是否连接
-   telepresence status
-   ```
-
-   通过执行上述命令，您可以使用集群内 DNS 解析并将请求代理到集群。然后您可以使用 IDE 在本地运行或调试：
-
-   ```shell
-   # 首先确保生成适当的资源
-   make manifests generate fmt vet
-   
-   go run .
-   # 或者您也可以使用 IDE 在本地运行
-   ```
-
-## 方式二: 不使用 Operator 的示例
-
-由于一些原因, seata docker 镜像使用暂不提供容器外部调用 ,那么需要案例相关项目也在容器内部 和 seata 镜像保持link模式
-
-```sh
-## 启动 seata deployment (nacos,seata,mysql)
-kubectl create -f deploy/seata-deploy.yaml
-## 启动 seata service (nacos,seata,mysql)
-kubectl create -f deploy/seata-service.yaml 
-## 上面会得到一个nodeport ip ( kubectl get service )
-### seata-service           NodePort    10.108.3.238   <none>        8091:31236/TCP,3305:30992/TCP,8848:30093/TCP   12m
-## 把ip修改到examples/examples-deploy中 用于dns寻址
-## 连接到mysql 导入表结构
-## 启动 example deployment (samples-account,samples-storage)
-kubectl create -f example/example-deploy.yaml
-## 启动 example service (samples-account,samples-storage)
-kubectl create -f example/example-service.yaml
-## 启动 order deployment (samples-order)
-kubectl create -f example/example-deploy.yaml
-## 启动 order service (samples-order)
-kubectl create -f example/example-service.yaml
-## 启动 business deployment (samples-dubbo-business-call)
-kubectl create -f example/business-deploy.yaml 
-## 启动 business deployment (samples-dubbo-service-call)
-kubectl create -f example/business-service.yaml 
+```shell
+git clone https://github.com/apache/incubator-seata-k8s.git
+cd incubator-seata-k8s
 ```
 
-### 浏览器 打开 nacos 控制台 http://localhost:8848/nacos/ 看看所有实例是否注册成功
-### 测试
-```sh
-# 账户服务  扣费
-curl  -H "Content-Type: application/json" -X POST --data "{\"id\":1,\"userId\":\"1\",\"amount\":100}"   cluster-ip:8102/account/dec_account
-# 库存服务 扣库存
-curl  -H "Content-Type: application/json" -X POST --data "{\"commodityCode\":\"C201901140001\",\"count\":100}"   cluster-ip:8100/storage/dec_storage
-# 订单服务 添加订单 扣费
-curl  -H "Content-Type: application/json" -X POST --data "{\"userId\":\"1\",\"commodityCode\":\"C201901140001\",\"orderCount\":10,\"orderAmount\":100}"   cluster-ip:8101/order/create_order
-# 业务服务 客户端seata版本太低
-curl  -H "Content-Type: application/json" -X POST --data "{\"userId\":\"1\",\"commodityCode\":\"C201901140001\",\"count\":10,\"amount\":100}"   cluster-ip:8104/business/dubbo/buy
+#### 第二步：部署 Operator
+
+将 Controller、CRD、RBAC 等资源部署到 Kubernetes 集群：
+
+```shell
+make deploy
 ```
 
+验证 Operator 部署：
+
+```shell
+kubectl get deployment -n seata-k8s-controller-manager
+kubectl get pods -n seata-k8s-controller-manager
+```
+
+#### 第三步：部署 Seata Server 集群
+
+创建 SeataServer 资源。以下是基于 [seata-server-cluster.yaml](deploy/seata-server-cluster.yaml) 的示例：
+
+```yaml
+apiVersion: operator.seata.apache.org/v1alpha1
+kind: SeataServer
+metadata:
+  name: seata-server
+  namespace: default
+spec:
+  serviceName: seata-server-cluster
+  replicas: 3
+  image: apache/seata-server:latest
+  persistence:
+    volumeReclaimPolicy: Retain
+    spec:
+      resources:
+        requests:
+          storage: 5Gi
+```
+
+将其应用到集群：
+
+```shell
+kubectl apply -f seata-server.yaml
+```
+
+如果一切正常，Operator 将会：
+- 创建 3 个 StatefulSet 副本
+- 创建一个名为 `seata-server-cluster` 的 Headless Service
+- 设置持久化存储卷
+
+在 Kubernetes 集群内访问 Seata Server 集群：
+
+```
+seata-server-0.seata-server-cluster.default.svc
+seata-server-1.seata-server-cluster.default.svc
+seata-server-2.seata-server-cluster.default.svc
+```
+
+查看 Pod 状态：
+
+```shell
+kubectl get pods -l app=seata-server
+kubectl logs -f seata-server-0
+```
+
+### CRD 配置参考
+
+详见 [operator.seata.apache.org_seataservers.yaml](config/crd/bases/operator.seata.apache.org_seataservers.yaml)。
+
+#### 关键配置字段
+
+| 字段 | 描述 | 默认值 | 示例 |
+|------|------|--------|------|
+| `serviceName` | Headless Service 名称 | - | `seata-server-cluster` |
+| `replicas` | Seata Server 副本数 | 1 | 3 |
+| `image` | 容器镜像 | - | `apache/seata-server:latest` |
+| `ports.consolePort` | 控制台端口 | 7091 | 7091 |
+| `ports.servicePort` | 服务端口 | 8091 | 8091 |
+| `ports.raftPort` | Raft 一致性端口 | 9091 | 9091 |
+| `resources` | 容器资源请求/限制 | - | 见下例 |
+| `persistence.volumeReclaimPolicy` | 卷回收策略 | Retain | Retain 或 Delete |
+| `persistence.spec.resources.requests.storage` | 持久化卷大小 | - | 5Gi |
+| `env` | 环境变量 | - | 见下例 |
+
+#### 环境变量和 Secret 配置
+
+通过环境变量和 Kubernetes Secret 配置 Seata Server：
+
+```yaml
+apiVersion: operator.seata.apache.org/v1alpha1
+kind: SeataServer
+metadata:
+  name: seata-server
+  namespace: default
+spec:
+  image: apache/seata-server:latest
+  replicas: 1
+  persistence:
+    spec:
+      resources:
+        requests:
+          storage: 5Gi
+  env:
+  - name: console.user.username
+    value: seata
+  - name: console.user.password
+    valueFrom:
+      secretKeyRef:
+        name: seata-credentials
+        key: password
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: seata-credentials
+  namespace: default
+type: Opaque
+stringData:
+  password: your-secure-password
+```
+
+### 开发者指南
+
+在本地调试 Operator 时，建议使用 Minikube 或相似的本地 Kubernetes 环境。
+
+#### 方式 1：构建并部署 Docker 镜像
+
+修改代码后重新构建 Controller 镜像：
+
+```shell
+# 启动 minikube 并设置 Docker 环境
+minikube start
+eval $(minikube docker-env)
+
+# 构建并部署
+make docker-build deploy
+
+# 验证部署
+kubectl get deployment -n seata-k8s-controller-manager
+```
+
+#### 方式 2：使用 Telepresence 本地调试
+
+使用 [Telepresence](https://www.telepresence.io/) 在本地调试，无需构建容器镜像。
+
+**前置要求：**
+- 安装 [Telepresence CLI](https://www.telepresence.io/docs/latest/quick-start/)
+- 安装 [Traffic Manager](https://www.getambassador.io/docs/telepresence/latest/install/manager#install-the-traffic-manager)
+
+**操作步骤：**
+
+1. 连接 Telepresence 到集群：
+
+```shell
+telepresence connect
+telepresence status  # 验证连接
+```
+
+2. 生成代码资源：
+
+```shell
+make manifests generate fmt vet
+```
+
+3. 在本地运行 Controller（使用 IDE 或命令行）：
+
+```shell
+go run .
+```
+
+现在您的本地开发环境可以访问 Kubernetes 集群的 DNS 和服务。
+
+---
+
+## 方式二：直接部署
+
+此方式直接使用 Kubernetes 清单部署 Seata Server，不使用 Operator。注意 Seata Docker 镜像目前需要在容器间使用 link 模式进行通信。
+
+### 前置要求
+
+- MySQL 数据库
+- Nacos 注册中心
+- Kubernetes 集群访问权限
+
+### 部署步骤
+
+#### 第一步：部署 Seata 及相关服务
+
+部署 Seata 服务器、Nacos 和 MySQL：
+
+```shell
+kubectl apply -f deploy/seata-deploy.yaml
+kubectl apply -f deploy/seata-service.yaml
+```
+
+#### 第二步：获取服务信息
+
+```shell
+kubectl get service
+# 记录 Seata 和 Nacos 的 NodePort IP 和端口
+```
+
+#### 第三步：配置 DNS 地址
+
+使用上一步获取的 NodePort IP 更新 `example/example-deploy.yaml` 中的地址。
+
+#### 第四步：初始化数据库
+
+```shell
+# 连接到 MySQL 并导入 Seata 表结构
+# 用实际 MySQL 服务 IP 替换 CLUSTER_IP
+mysql -h <CLUSTER_IP> -u root -p < path/to/seata-db-schema.sql
+```
+
+#### 第五步：部署示例应用
+
+部署示例微服务：
+
+```shell
+# 部署账户和库存服务
+kubectl apply -f example/example-deploy.yaml
+kubectl apply -f example/example-service.yaml
+
+# 部署订单服务
+kubectl apply -f example/order-deploy.yaml
+kubectl apply -f example/order-service.yaml
+
+# 部署业务服务
+kubectl apply -f example/business-deploy.yaml
+kubectl apply -f example/business-service.yaml
+```
+
+### 验证
+
+打开 Nacos 控制台验证服务注册：
+
+```
+http://localhost:8848/nacos/
+```
+
+检查是否所有服务均已注册：
+- account-service（账户服务）
+- storage-service（库存服务）
+- order-service（订单服务）
+- business-service（业务服务）
+
+### 测试验证
+
+使用以下 curl 命令测试分布式事务场景：
+
+#### 测试 1：账户服务 - 扣费
+
+```shell
+curl -H "Content-Type: application/json" \
+  -X POST \
+  --data '{"id":1,"userId":"1","amount":100}' \
+  http://<CLUSTER_IP>:8102/account/dec_account
+```
+
+#### 测试 2：库存服务 - 扣库存
+
+```shell
+curl -H "Content-Type: application/json" \
+  -X POST \
+  --data '{"commodityCode":"C201901140001","count":100}' \
+  http://<CLUSTER_IP>:8100/storage/dec_storage
+```
+
+#### 测试 3：订单服务 - 创建订单
+
+```shell
+curl -H "Content-Type: application/json" \
+  -X POST \
+  --data '{"userId":"1","commodityCode":"C201901140001","orderCount":10,"orderAmount":100}' \
+  http://<CLUSTER_IP>:8101/order/create_order
+```
+
+#### 测试 4：业务服务 - 执行事务
+
+```shell
+curl -H "Content-Type: application/json" \
+  -X POST \
+  --data '{"userId":"1","commodityCode":"C201901140001","count":10,"amount":100}' \
+  http://<CLUSTER_IP>:8104/business/dubbo/buy
+```
+
+用实际 NodePort 服务的 IP 地址替换 `<CLUSTER_IP>`。
+
+---
+
+## 故障排查
+
+### Pod 无法启动
+
+```shell
+# 查看 Pod 日志
+kubectl logs <pod-name>
+
+# 查看 Pod 详情
+kubectl describe pod <pod-name>
+```
+
+### 服务无法连接
+
+```shell
+# 测试 DNS 解析
+kubectl run -it --rm debug --image=busybox --restart=Never -- nslookup seata-server-0.seata-server-cluster.default.svc
+```
+
+### 持久化卷问题
+
+```shell
+# 查看 PVC 状态
+kubectl get pvc
+
+# 查看 PV 状态
+kubectl get pv
+```
+
+## 更多信息
+
+- [Seata 官方文档](https://seata.apache.org/)
+- [Kubernetes 文档](https://kubernetes.io/docs/)
+- [Operator SDK 文档](https://sdk.operatorframework.io/)
