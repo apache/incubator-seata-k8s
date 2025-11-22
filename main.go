@@ -34,6 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
+	seatav1 "github.com/apache/seata-k8s/api/v1"
 	seatav1alpha1 "github.com/apache/seata-k8s/api/v1alpha1"
 	"github.com/apache/seata-k8s/controllers"
 	//+kubebuilder:scaffold:imports
@@ -47,6 +48,9 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
+	// Add v1 API version (storage version)
+	utilruntime.Must(seatav1.AddToScheme(scheme))
+	// Add v1alpha1 API version (with conversion from v1alpha1 to v1)
 	utilruntime.Must(seatav1alpha1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }

@@ -131,7 +131,7 @@ kubectl logs -f seata-server-0
 
 ### CRD 配置参考
 
-详见 [operator.seata.apache.org_seataservers.yaml](config/crd/bases/operator.seata.apache.org_seataservers.yaml)。
+详见 [seataservers_crd.yaml](config/crd/bases/v1/seataservers_crd.yaml)。
 
 #### 关键配置字段
 

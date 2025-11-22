@@ -70,7 +70,7 @@ make generate
 make manifests
 ```
 
-This will update the `config/crd/bases/operator.seata.apache.org_seataservers.yaml` file.
+This will update the `config/crd/bases/v1/seataservers_crd.yaml` file with the v1 API version and support for both v1 and v1alpha1 versions.
 
 **Step 3**, We need to verify to ensure the generated `CRD` meets our expectations.
 
@@ -156,7 +156,7 @@ make generate
 make manifests
 ```
 
-This will update the `config/crd/bases/operator.seata.apache.org_seataservers.yaml` file
+This will update the `config/crd/bases/v1/seataservers_crd.yaml` file with the v1 API version and support for both v1 and v1alpha1 versions.
 
 **3. Verify the CRD**
 

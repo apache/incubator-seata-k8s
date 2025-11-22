@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package v1alpha1
+package v1
 
 import (
 	apiv1 "k8s.io/api/core/v1"
@@ -106,11 +106,12 @@ type SeataServerStatus struct {
 }
 
 //+kubebuilder:object:root=true
+//+kubebuilder:object:generate=true
 //+kubebuilder:subresource:status
-//+kubebuilder:resource:path=seataservers
-//+kubebuilder:deprecatedversion:warning="v1alpha1 is deprecated and will be removed in a future version. Use v1 instead."
+//+kubebuilder:storageversion
 
 // SeataServer is the Schema for the seataservers API
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type SeataServer struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -124,8 +125,10 @@ func (s *SeataServer) WithDefaults() bool {
 }
 
 //+kubebuilder:object:root=true
+//+kubebuilder:object:generate=true
 
 // SeataServerList contains a list of SeataServer
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type SeataServerList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`

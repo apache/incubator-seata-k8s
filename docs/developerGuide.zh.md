@@ -120,7 +120,7 @@ make generate
 make manifests
 ```
 
-这将更新`config/crd/bases/operator.seata.apache.org_seataservers.yaml`文件
+这将更新`config/crd/bases/v1/seataservers_crd.yaml`文件，包含 v1 API 版本以及对 v1 和 v1alpha1 两个版本的支持
 
 **第三步**，我们要验证以确保生成的`CRD`符合预期
 
@@ -219,7 +219,7 @@ make generate
 make manifests
 ```
 
-这将更新`config/crd/bases/operator.seata.apache.org_seataservers.yaml`文件
+这将更新`config/crd/bases/v1/seataservers_crd.yaml`文件，包含 v1 API 版本以及对 v1 和 v1alpha1 两个版本的支持
 
 **3.验证CRD**
 
