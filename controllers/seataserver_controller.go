@@ -55,6 +55,54 @@ const (
 	MaxRecentErrorRecords = 5
 )
 
+// reconcileClientObject is a generic method to create, update and sync Kubernetes objects
+func (r *SeataServerReconciler) reconcileClientObject(
+	ctx context.Context,
+	s *seatav1alpha1.SeataServer,
+	obj client.Object,
+	getFunc func() client.Object,
+	syncFunc func(found, desired client.Object),
+	errorType seatav1alpha1.ServerErrorType,
+	objDesc string,
+) error {
+	// Set controller reference
+	if err := controllerutil.SetControllerReference(s, obj, r.Scheme); err != nil {
+		r.recordError(ctx, types.NamespacedName{Name: s.Name, Namespace: s.Namespace},
+			errorType, fmt.Sprintf("Failed to set owner reference for %s", objDesc), err)
+		return err
+	}
+
+	// Get existing object
+	found := getFunc()
+	err := r.Client.Get(ctx, types.NamespacedName{Name: obj.GetName(), Namespace: obj.GetNamespace()}, found)
+
+	switch {
+	case err != nil && errors.IsNotFound(err):
+		// Create new object if not found
+		r.Log.Info(fmt.Sprintf("Creating new %s: %s/%s", objDesc, obj.GetNamespace(), obj.GetName()))
+		if err := r.Client.Create(ctx, obj); err != nil {
+			r.recordError(ctx, types.NamespacedName{Name: s.Name, Namespace: s.Namespace},
+				errorType, fmt.Sprintf("Failed to create %s", objDesc), err)
+			return err
+		}
+	case err != nil:
+		// Error occurred during get operation
+		r.recordError(ctx, types.NamespacedName{Name: s.Name, Namespace: s.Namespace},
+			errorType, fmt.Sprintf("Failed to get %s", objDesc), err)
+		return err
+	default:
+		// Update existing object
+		r.Log.Info(fmt.Sprintf("Updating %s: %s/%s", objDesc, found.GetNamespace(), found.GetName()))
+		syncFunc(found, obj)
+		if err := r.Client.Update(ctx, found); err != nil {
+			r.recordError(ctx, types.NamespacedName{Name: s.Name, Namespace: s.Namespace},
+				errorType, fmt.Sprintf("Failed to update %s", objDesc), err)
+			return err
+		}
+	}
+	return nil
+}
+
 //+kubebuilder:rbac:groups=operator.seata.apache.org,resources=seataservers,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=operator.seata.apache.org,resources=seataservers/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=operator.seata.apache.org,resources=seataservers/finalizers,verbs=update
@@ -77,16 +125,18 @@ func (r *SeataServerReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	s := &seatav1alpha1.SeataServer{}
 	if err := r.Get(ctx, req.NamespacedName, s); err != nil {
 		if errors.IsNotFound(err) {
-			r.recordError(ctx, req.NamespacedName, seatav1alpha1.ErrorTypeK8s_SeataServer, fmt.Sprintf("Failed to get resource SeataServer(%v),err %s", req.NamespacedName, err.Error()), err)
+			// Resource already deleted
 			return ctrl.Result{}, nil
 		}
+		r.recordError(ctx, req.NamespacedName, seatav1alpha1.ErrorTypeK8s_SeataServer, "Failed to fetch SeataServer", err)
+		return ctrl.Result{}, err
 	}
 
-	changed := s.WithDefaults()
-	if changed {
-		r.Log.Info(fmt.Sprintf("Setting default values for SeataServer(%v)", req.NamespacedName))
+	// Apply default values if needed
+	if changed := s.WithDefaults(); changed {
+		r.Log.Info("Setting default values for SeataServer", "name", s.Name, "namespace", s.Namespace)
 		if err := r.Client.Update(ctx, s); err != nil {
-			r.recordError(ctx, req.NamespacedName, seatav1alpha1.ErrorTypeK8s_SeataServer, fmt.Sprintf("Failed to update resource SeataServer(%v)", req.NamespacedName), err)
+			r.recordError(ctx, req.NamespacedName, seatav1alpha1.ErrorTypeK8s_SeataServer, "Failed to update SeataServer with defaults", err)
 			return reconcile.Result{}, err
 		}
 		return reconcile.Result{Requeue: true}, nil
@@ -103,93 +153,56 @@ func (r *SeataServerReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	if !s.Status.Synchronized {
-		r.Log.Info(fmt.Sprintf("SeataServer(%v) has not been synchronized yet, requeue in %d seconds",
-			req.NamespacedName, RequeueSeconds))
+		r.Log.Info("SeataServer not synchronized yet, requeuing", "name", s.Name, "namespace", s.Namespace, "requeueAfter", RequeueSeconds)
 		return ctrl.Result{Requeue: true, RequeueAfter: RequeueSeconds * time.Second}, nil
 	}
 
 	return ctrl.Result{}, nil
 }
 
-func (r *SeataServerReconciler) reconcileHeadlessService(ctx context.Context, s *seatav1alpha1.SeataServer) (err error) {
+func (r *SeataServerReconciler) reconcileHeadlessService(ctx context.Context, s *seatav1alpha1.SeataServer) error {
 	svc := seata.MakeHeadlessService(s)
-	if err := controllerutil.SetControllerReference(s, svc, r.Scheme); err != nil {
-		r.recordError(ctx, types.NamespacedName{Name: s.Name, Namespace: s.Namespace},
-			seatav1alpha1.ErrorTypeK8s_HeadlessService, fmt.Sprintf("Failed to set owner reference for SeataServer(%v)", s.Name), err)
-		return err
-	}
-	foundSvc := &apiv1.Service{}
-	err = r.Client.Get(ctx, types.NamespacedName{
-		Name:      svc.Name,
-		Namespace: svc.Namespace,
-	}, foundSvc)
-	if err != nil && errors.IsNotFound(err) {
-		r.Log.Info(fmt.Sprintf("Creating a new SeataServer Service {%s:%s}",
-			svc.Namespace, svc.Name))
-		err = r.Client.Create(ctx, svc)
-		if err != nil {
-			r.recordError(ctx, types.NamespacedName{Name: s.Name, Namespace: s.Namespace},
-				seatav1alpha1.ErrorTypeK8s_HeadlessService, fmt.Sprintf("Failed to create SeataServer Service {%s:%s}",
-					svc.Namespace, svc.Name), err)
-			return err
-		}
-		return nil
-	} else if err != nil {
-		r.recordError(ctx, types.NamespacedName{Name: s.Name, Namespace: s.Namespace},
-			seatav1alpha1.ErrorTypeK8s_HeadlessService, fmt.Sprintf("Failed to get SeataServer Service {%s:%s}",
-				svc.Namespace, svc.Name), err)
-		return err
-	} else {
-		r.Log.Info(fmt.Sprintf("Updating existing SeataServer Service {%s:%s}",
-			foundSvc.Namespace, foundSvc.Name))
-		seata.SyncService(foundSvc, svc)
-		err = r.Client.Update(ctx, foundSvc)
-		if err != nil {
-			r.recordError(ctx, types.NamespacedName{Name: s.Name, Namespace: s.Namespace},
-				seatav1alpha1.ErrorTypeK8s_HeadlessService, fmt.Sprintf("Failed to update SeataServer Service {%s:%s}",
-					foundSvc.Namespace, foundSvc.Name), err)
-			return err
-		}
-	}
-	return nil
+	return r.reconcileClientObject(
+		ctx,
+		s,
+		svc,
+		func() client.Object { return &apiv1.Service{} },
+		func(found, desired client.Object) {
+			seata.SyncService(found.(*apiv1.Service), desired.(*apiv1.Service))
+		},
+		seatav1alpha1.ErrorTypeK8s_HeadlessService,
+		"Headless Service",
+	)
 }
 
-func (r *SeataServerReconciler) reconcileStatefulSet(ctx context.Context, s *seatav1alpha1.SeataServer) (err error) {
+func (r *SeataServerReconciler) reconcileStatefulSet(ctx context.Context, s *seatav1alpha1.SeataServer) error {
 	sts := seata.MakeStatefulSet(s)
 	if err := controllerutil.SetControllerReference(s, sts, r.Scheme); err != nil {
 		return err
 	}
+
 	foundSts := &appsv1.StatefulSet{}
-	err = r.Client.Get(ctx, types.NamespacedName{
-		Name:      sts.Name,
-		Namespace: sts.Namespace,
-	}, foundSts)
-	if err != nil && errors.IsNotFound(err) {
-		r.Log.Info(fmt.Sprintf("Creating a new SeataServer StatefulSet {%s:%s}",
-			sts.Namespace, sts.Name))
-		err = r.Client.Create(ctx, sts)
-		if err != nil {
+	err := r.Client.Get(ctx, types.NamespacedName{Name: sts.Name, Namespace: sts.Namespace}, foundSts)
+
+	switch {
+	case err != nil && errors.IsNotFound(err):
+		r.Log.Info(fmt.Sprintf("Creating new StatefulSet: %s/%s", sts.Namespace, sts.Name))
+		if err := r.Client.Create(ctx, sts); err != nil {
 			r.recordError(ctx, types.NamespacedName{Name: s.Name, Namespace: s.Namespace},
-				seatav1alpha1.ErrorTypeK8s_StatefulSet, fmt.Sprintf("Failed to create SeataServer StatefulSet {%s:%s}",
-					sts.Namespace, sts.Name), err)
+				seatav1alpha1.ErrorTypeK8s_StatefulSet, "Failed to create StatefulSet", err)
 			return err
 		}
-		return nil
-	} else if err != nil {
+	case err != nil:
 		r.recordError(ctx, types.NamespacedName{Name: s.Name, Namespace: s.Namespace},
-			seatav1alpha1.ErrorTypeK8s_StatefulSet, fmt.Sprintf("Failed to get SeataServer StatefulSet {%s:%s}",
-				sts.Namespace, sts.Name), err)
+			seatav1alpha1.ErrorTypeK8s_StatefulSet, "Failed to get StatefulSet", err)
 		return err
-	} else {
-		err = r.updateStatefulSet(ctx, s, foundSts, sts)
-		if err != nil {
+	default:
+		if err := r.updateStatefulSet(ctx, s, foundSts, sts); err != nil {
 			r.recordError(ctx, types.NamespacedName{Name: s.Name, Namespace: s.Namespace},
-				seatav1alpha1.ErrorTypeK8s_StatefulSet, fmt.Sprintf("Failed to update SeataServer StatefulSet {%s:%s}",
-					foundSts.Namespace, foundSts.Name), err)
+				seatav1alpha1.ErrorTypeK8s_StatefulSet, "Failed to update StatefulSet", err)
 			return err
 		}
 	}
-
 	return nil
 }
 
@@ -336,10 +349,9 @@ func (r *SeataServerReconciler) deletePVC(ctx context.Context, pvcItem apiv1.Per
 			Namespace: pvcItem.Namespace,
 		},
 	}
-	r.Log.Info(fmt.Sprintf("Deleting PVC with name %s", pvcItem.Name))
-	err := r.Client.Delete(ctx, pvcDelete)
-	if err != nil {
-		r.Log.Error(err, fmt.Sprintf("Error deleting PVC with name %s", pvcDelete))
+	r.Log.Info("Deleting PVC", "name", pvcItem.Name, "namespace", pvcItem.Namespace)
+	if err := r.Client.Delete(ctx, pvcDelete); err != nil {
+		r.Log.Error(err, "Failed to delete PVC", "name", pvcItem.Name, "namespace", pvcItem.Namespace)
 	}
 }
 
