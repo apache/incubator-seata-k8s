@@ -19,12 +19,13 @@ package seata
 
 import (
 	"fmt"
+	"strconv"
+
 	seatav1alpha1 "github.com/apache/seata-k8s/api/v1alpha1"
 	"github.com/apache/seata-k8s/pkg/utils"
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"strconv"
 )
 
 func makeLabels(name string) map[string]string {
@@ -93,38 +94,44 @@ func MakeStatefulSet(s *seatav1alpha1.SeataServer) *appsv1.StatefulSet {
 		},
 	}
 
-	statefulSet.Spec.Template.Spec.Containers = []apiv1.Container{{
-		Name:  s.Spec.ContainerName,
-		Image: s.Spec.Image,
-		Command: []string{
-			"/bin/bash",
-		},
+	container := &apiv1.Container{
+		Name:    s.Spec.ContainerName,
+		Image:   s.Spec.Image,
+		Command: []string{"/bin/bash"},
 		Args: []string{
 			"-c",
-			fmt.Sprintf("export SEATA_IP=$(HOST_NAME).%s;", s.Spec.ServiceName) +
-				fmt.Sprintf("python3 -c \"\n%s\n\";", PythonScript) +
-				"/bin/bash /seata-server-entrypoint.sh;",
+			buildEntrypointScript(s),
 		},
 		Ports: []apiv1.ContainerPort{
 			{Name: "service-port", ContainerPort: s.Spec.Ports.ServicePort},
 			{Name: "console-port", ContainerPort: s.Spec.Ports.ConsolePort},
 			{Name: "raft-port", ContainerPort: s.Spec.Ports.RaftPort},
 		},
-		VolumeMounts: []apiv1.VolumeMount{{
-			Name:      "seata-store",
-			MountPath: "/seata-server/sessionStore",
-		}},
-	}}
+		VolumeMounts: []apiv1.VolumeMount{
+			{
+				Name:      pvcName,
+				MountPath: "/seata-server/sessionStore",
+			},
+		},
+		Resources: s.Spec.Resources,
+		Env:       buildEnvVars(s),
+	}
 
-	container := &statefulSet.Spec.Template.Spec.Containers[0]
-	container.Resources = s.Spec.Resources
+	statefulSet.Spec.Template.Spec.Containers = []apiv1.Container{*container}
 	statefulSet.Spec.Replicas = &s.Spec.Replicas
-	container.Image = s.Spec.Image
 
-	container.Ports[0].ContainerPort = s.Spec.Ports.ConsolePort
-	container.Ports[1].ContainerPort = s.Spec.Ports.ServicePort
-	container.Ports[2].ContainerPort = s.Spec.Ports.RaftPort
+	return statefulSet
+}
 
+// buildEntrypointScript constructs the container entrypoint script
+func buildEntrypointScript(s *seatav1alpha1.SeataServer) string {
+	return fmt.Sprintf("export SEATA_IP=$(HOST_NAME).%s;", s.Spec.ServiceName) +
+		fmt.Sprintf("python3 -c \"\n%s\n\";", PythonScript) +
+		"/bin/bash /seata-server-entrypoint.sh;"
+}
+
+// buildEnvVars constructs environment variables for Seata server
+func buildEnvVars(s *seatav1alpha1.SeataServer) []apiv1.EnvVar {
 	envs := []apiv1.EnvVar{
 		{
 			Name: "HOST_NAME",
@@ -135,14 +142,10 @@ func MakeStatefulSet(s *seatav1alpha1.SeataServer) *appsv1.StatefulSet {
 		{Name: "store.mode", Value: "raft"},
 		{Name: "server.port", Value: strconv.Itoa(int(s.Spec.Ports.ConsolePort))},
 		{Name: "server.servicePort", Value: strconv.Itoa(int(s.Spec.Ports.ServicePort))},
+		{Name: "server.raft.serverAddr", Value: utils.ConcatRaftServerAddress(s)},
 	}
 
-	addr := utils.ConcatRaftServerAddress(s)
-	envs = append(envs, apiv1.EnvVar{Name: "server.raft.serverAddr", Value: addr})
-	for _, env := range s.Spec.Env {
-		envs = append(envs, env)
-	}
-	container.Env = envs
-
-	return statefulSet
+	// Append user-provided environment variables
+	envs = append(envs, s.Spec.Env...)
+	return envs
 }

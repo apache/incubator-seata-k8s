@@ -19,27 +19,32 @@ package utils
 
 import (
 	"fmt"
-	seatav1alpha1 "github.com/apache/seata-k8s/api/v1alpha1"
 	"strconv"
 	"strings"
+
+	seatav1alpha1 "github.com/apache/seata-k8s/api/v1alpha1"
 )
 
 const (
 	SeataFinalizer = "cleanUpSeataPVC"
 )
 
+// ConcatRaftServerAddress builds a comma-separated list of Raft server addresses
 func ConcatRaftServerAddress(s *seatav1alpha1.SeataServer) string {
 	var addrBuilder strings.Builder
 	for i := int32(0); i < s.Spec.Replicas; i++ {
-		// Add governed service name to communicate to each other
+		// Format: pod-ordinal.service-name:raft-port
 		addrBuilder.WriteString(fmt.Sprintf("%s-%d.%s:%d,", s.Name, i, s.Spec.ServiceName, s.Spec.Ports.RaftPort))
-		//addrBuilder.WriteString(fmt.Sprintf("%s-%d:%d,", s.Name, i, s.Spec.Ports.RaftPort))
 	}
+
 	addr := addrBuilder.String()
-	addr = addr[:len(addr)-1]
+	if len(addr) > 0 {
+		addr = addr[:len(addr)-1] // Remove trailing comma
+	}
 	return addr
 }
 
+// ContainsString checks if a string slice contains a specific string
 func ContainsString(slice []string, str string) bool {
 	for _, item := range slice {
 		if item == str {
@@ -49,26 +54,31 @@ func ContainsString(slice []string, str string) bool {
 	return false
 }
 
-func RemoveString(slice []string, str string) (result []string) {
+// RemoveString removes the first occurrence of a string from a slice
+func RemoveString(slice []string, str string) []string {
+	var result []string
 	for _, item := range slice {
-		if item == str {
-			continue
+		if item != str {
+			result = append(result, item)
 		}
-		result = append(result, item)
 	}
 	return result
 }
 
+// IsPVCOrphan checks if a PVC is orphaned (its ordinal >= replicas)
 func IsPVCOrphan(pvcName string, replicas int32) bool {
-	index := strings.LastIndexAny(pvcName, "-")
-	if index == -1 {
+	// PVC names follow pattern: <name>-<ordinal>
+	lastDashIdx := strings.LastIndexAny(pvcName, "-")
+	if lastDashIdx == -1 {
 		return false
 	}
 
-	ordinal, err := strconv.Atoi(pvcName[index+1:])
+	// Extract and parse the ordinal from PVC name
+	ordinal, err := strconv.Atoi(pvcName[lastDashIdx+1:])
 	if err != nil {
 		return false
 	}
 
+	// PVC is orphaned if its ordinal is >= current replica count
 	return int32(ordinal) >= replicas
 }
