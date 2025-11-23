@@ -1,0 +1,287 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: seataservers.operator.seata.apache.org
+spec:
+  group: operator.seata.apache.org
+  scope: Namespaced
+  names:
+    kind: SeataServer
+    listKind: SeataServerList
+    plural: seataservers
+    singular: seataserver
+    shortNames:
+      - ss
+      - sss
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      deprecated: false
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              properties:
+                containerName:
+                  type: string
+                  default: seata-server
+                  description: Name of the container
+                image:
+                  type: string
+                  default: apache/seata-server:latest
+                  description: Container image
+                env:
+                  type: array
+                  items:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                  description: Environment variables
+                resources:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                  description: Container resource requirements
+                replicas:
+                  type: integer
+                  format: int32
+                  minimum: 1
+                  default: 1
+                  description: Number of Seata Server replicas
+                serviceName:
+                  type: string
+                  default: seata-server-cluster
+                  description: Headless Service name
+                ports:
+                  type: object
+                  properties:
+                    consolePort:
+                      type: integer
+                      format: int32
+                      default: 7091
+                      description: Console port
+                    servicePort:
+                      type: integer
+                      format: int32
+                      default: 8091
+                      description: Service port
+                    raftPort:
+                      type: integer
+                      format: int32
+                      default: 9091
+                      description: Raft port
+                  description: Port configuration
+                persistence:
+                  type: object
+                  properties:
+                    volumeReclaimPolicy:
+                      type: string
+                      enum:
+                        - Delete
+                        - Retain
+                      description: Volume reclaim policy
+                    spec:
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+                      description: PersistentVolumeClaim spec
+                  description: Storage persistence configuration
+                store:
+                  type: object
+                  properties:
+                    resources:
+                      type: object
+                      properties:
+                        requests:
+                          type: object
+                          properties:
+                            storage:
+                              type: string
+                              description: Storage size
+                          description: Storage resource requests
+                      description: Store resources
+                  description: Storage configuration
+            status:
+              type: object
+              properties:
+                synchronized:
+                  type: boolean
+                  description: Whether raft cluster is synchronized
+                replicas:
+                  type: integer
+                  format: int32
+                  description: Number of replicas
+                readyReplicas:
+                  type: integer
+                  format: int32
+                  description: Number of ready replicas
+                errors:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        description: Error type
+                      message:
+                        type: string
+                        description: Error message
+                      timestamp:
+                        type: string
+                        format: date-time
+                        description: Error timestamp
+                  description: List of recent errors
+      subresources:
+        status: {}
+    - name: v1alpha1
+      served: true
+      storage: false
+      deprecated: true
+      deprecationWarning: "operator.seata.apache.org/v1alpha1 is deprecated; use operator.seata.apache.org/v1"
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              properties:
+                containerName:
+                  type: string
+                  default: seata-server
+                  description: Name of the container
+                image:
+                  type: string
+                  default: apache/seata-server:latest
+                  description: Container image
+                env:
+                  type: array
+                  items:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                  description: Environment variables
+                resources:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                  description: Container resource requirements
+                replicas:
+                  type: integer
+                  format: int32
+                  minimum: 1
+                  default: 1
+                  description: Number of Seata Server replicas
+                serviceName:
+                  type: string
+                  default: seata-server-cluster
+                  description: Headless Service name
+                ports:
+                  type: object
+                  properties:
+                    consolePort:
+                      type: integer
+                      format: int32
+                      default: 7091
+                      description: Console port
+                    servicePort:
+                      type: integer
+                      format: int32
+                      default: 8091
+                      description: Service port
+                    raftPort:
+                      type: integer
+                      format: int32
+                      default: 9091
+                      description: Raft port
+                  description: Port configuration
+                persistence:
+                  type: object
+                  properties:
+                    volumeReclaimPolicy:
+                      type: string
+                      enum:
+                        - Delete
+                        - Retain
+                      description: Volume reclaim policy
+                    spec:
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+                      description: PersistentVolumeClaim spec
+                  description: Storage persistence configuration
+                store:
+                  type: object
+                  properties:
+                    resources:
+                      type: object
+                      properties:
+                        requests:
+                          type: object
+                          properties:
+                            storage:
+                              type: string
+                              description: Storage size
+                          description: Storage resource requests
+                      description: Store resources
+                  description: Storage configuration
+            status:
+              type: object
+              properties:
+                synchronized:
+                  type: boolean
+                  description: Whether raft cluster is synchronized
+                replicas:
+                  type: integer
+                  format: int32
+                  description: Number of replicas
+                readyReplicas:
+                  type: integer
+                  format: int32
+                  description: Number of ready replicas
+                errors:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        description: Error type
+                      message:
+                        type: string
+                        description: Error message
+                      timestamp:
+                        type: string
+                        format: date-time
+                        description: Error timestamp
+                  description: List of recent errors
+      subresources:
+        status: {}
+  conversion:
+    strategy: None  # Built-in conversion via ConvertTo/ConvertFrom methods
+

@@ -124,7 +124,7 @@ seata-server-2.seata-server-cluster.default.svc
 
 ### CRD Reference
 
-For complete CRD definitions, see [operator.seata.apache.org_seataservers.yaml](config/crd/bases/operator.seata.apache.org_seataservers.yaml).
+For complete CRD definitions, see [seataservers_crd.yaml](config/crd/bases/v1/seataservers_crd.yaml).
 
 #### Key Configuration Properties
 
