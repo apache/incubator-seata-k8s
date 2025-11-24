@@ -92,17 +92,33 @@ func (e ServerErrorType) String() string {
 
 // SeataServerError defines the error of SeataServer
 type SeataServerError struct {
-	Type      string      `json:"type"`
-	Message   string      `json:"message"`
+	// Type describes the category of the error
+	// +kubebuilder:validation:Optional
+	Type string `json:"type"`
+	// Message contains the error message details
+	// +kubebuilder:validation:Optional
+	Message string `json:"message"`
+	// Timestamp is when the error occurred
+	// +kubebuilder:validation:Optional
 	Timestamp metav1.Time `json:"timestamp"`
 }
 
 // SeataServerStatus defines the observed state of SeataServer
 type SeataServerStatus struct {
-	Synchronized  bool               `json:"synchronized"`
-	Replicas      int32              `json:"replicas"`
-	ReadyReplicas int32              `json:"readyReplicas,omitempty"`
-	Errors        []SeataServerError `json:"errors,omitempty"`
+	// Synchronized indicates whether the raft cluster is fully synchronized
+	// +kubebuilder:validation:Optional
+	Synchronized bool `json:"synchronized"`
+	// Replicas is the desired number of replicas
+	// +kubebuilder:validation:Optional
+	Replicas int32 `json:"replicas"`
+	// ReadyReplicas is the number of ready replicas
+	// +kubebuilder:validation:Optional
+	ReadyReplicas int32 `json:"readyReplicas,omitempty"`
+	// Errors contains recent reconciliation errors (up to 5 most recent)
+	// +kubebuilder:validation:Optional
+	// +patchMergeKey=timestamp
+	// +patchStrategy=merge
+	Errors []SeataServerError `json:"errors,omitempty" patchStrategy:"merge" patchMergeKey:"timestamp"`
 }
 
 //+kubebuilder:object:root=true
