@@ -1,0 +1,32 @@
+# Seata Server Helm Chart - Cluster Mode Values
+
+seataServer:
+  mode: cluster
+  replicas: 3
+  image:
+    repository: apache/seata-server
+    tag: latest
+    pullPolicy: IfNotPresent
+  
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+  
+  persistence:
+    enabled: true
+    size: 5Gi
+    reclaimPolicy: Retain
+  
+  service:
+    type: ClusterIP
+
+# 高可用配置
+podAntiAffinity:
+  enabled: true
+  type: preferred
+  topologyKey: kubernetes.io/hostname
+

@@ -1,0 +1,30 @@
+apiVersion: v2
+name: seata-server
+description: A Helm chart for deploying Apache Seata Server on Kubernetes
+type: application
+version: 1.0.0
+appVersion: "2.0.0"
+
+# Chart metadata
+home: https://seata.apache.org/
+sources:
+  - https://github.com/apache/incubator-seata-k8s
+  - https://github.com/seata/seata
+maintainers:
+  - name: Seata Community
+    email: dev@seata.apache.org
+keywords:
+  - seata
+  - distributed-transaction
+  - kubernetes
+categories:
+  - Database
+  - Middleware
+license: Apache-2.0
+
+# Chart dependencies
+dependencies: []
+
+# Icon URL (optional)
+icon: https://avatars.githubusercontent.com/u/63743798?s=200&v=4
+

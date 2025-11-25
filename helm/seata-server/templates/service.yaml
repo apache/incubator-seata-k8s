@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.seataServer.service.name }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "seata-server.labels" . | nindent 4 }}
+  annotations:
+    {{- with .Values.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  type: {{ if .Values.seataServer.nodePort.enabled }}{{ .Values.seataServer.nodePort.type }}{{ else }}{{ .Values.seataServer.service.type }}{{ end }}
+  selector:
+    {{- include "seata-server.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: service
+      port: {{ .Values.seataServer.service.ports.service.port }}
+      targetPort: {{ .Values.seataServer.service.ports.service.targetPort }}
+      protocol: {{ .Values.seataServer.service.ports.service.protocol }}
+      {{- if and .Values.seataServer.nodePort.enabled (eq .Values.seataServer.service.type "NodePort") }}
+      nodePort: {{ .Values.seataServer.nodePort.ports.service }}
+      {{- end }}
+    - name: console
+      port: {{ .Values.seataServer.service.ports.console.port }}
+      targetPort: {{ .Values.seataServer.service.ports.console.targetPort }}
+      protocol: {{ .Values.seataServer.service.ports.console.protocol }}
+      {{- if and .Values.seataServer.nodePort.enabled (eq .Values.seataServer.service.type "NodePort") }}
+      nodePort: {{ .Values.seataServer.nodePort.ports.console }}
+      {{- end }}
+    - name: raft
+      port: {{ .Values.seataServer.service.ports.raft.port }}
+      targetPort: {{ .Values.seataServer.service.ports.raft.targetPort }}
+      protocol: {{ .Values.seataServer.service.ports.raft.protocol }}
+

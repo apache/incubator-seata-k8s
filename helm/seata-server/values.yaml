@@ -1,0 +1,182 @@
+# Default values for seata-server Helm chart
+
+# Global configuration
+global:
+  namespace: default
+  
+# Seata Server configuration
+seataServer:
+  # Deployment name
+  name: seata-server
+  
+  # Deployment mode: cluster or standalone
+  # cluster: Use SeataServer CRD (requires seata-k8s operator)
+  # standalone: Use Deployment directly
+  mode: cluster
+  
+  # Image configuration
+  image:
+    repository: apache/seata-server
+    tag: latest
+    pullPolicy: IfNotPresent
+  
+  # Replica configuration
+  replicas: 3
+  
+  # Service configuration
+  service:
+    name: seata-server-cluster
+    type: ClusterIP
+    ports:
+      service:
+        port: 8091
+        targetPort: 8091
+        protocol: TCP
+        name: service
+      console:
+        port: 7091
+        targetPort: 7091
+        protocol: TCP
+        name: console
+      raft:
+        port: 9091
+        targetPort: 9091
+        protocol: TCP
+        name: raft
+  
+  # NodePort Service (for standalone mode)
+  nodePort:
+    enabled: false
+    type: NodePort
+    ports:
+      service: 30091
+      console: 30092
+  
+  # Resource configuration
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  
+  # Persistence configuration
+  persistence:
+    enabled: true
+    storageClassName: ""  # Leave empty to use default
+    accessMode: ReadWriteOnce
+    size: 5Gi
+    # Volume reclaim policy: Delete or Retain
+    reclaimPolicy: Retain
+  
+  # Ports configuration
+  ports:
+    console: 7091
+    service: 8091
+    raft: 9091
+  
+  # Environment variables
+  env:
+    # Console credentials
+    - name: console.user.username
+      value: seata
+    - name: console.user.password
+      valueFrom:
+        secretKeyRef:
+          name: seata-credentials
+          key: password
+    # Store configuration
+    - name: store.mode
+      value: raft
+    - name: server.port
+      value: "7091"
+    - name: server.servicePort
+      value: "8091"
+
+# Secret configuration
+secret:
+  # Create secret automatically
+  create: true
+  # Secret name
+  name: seata-credentials
+  # Password value (base64 encoded in Kubernetes)
+  password: seata123456
+
+# PodSecurityPolicy configuration
+podSecurityPolicy:
+  enabled: false
+
+# Network Policy configuration
+networkPolicy:
+  enabled: false
+
+# Ingress configuration
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: seata.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+    # - secretName: seata-tls
+    #   hosts:
+    #     - seata.example.com
+
+# Monitoring and logging
+monitoring:
+  enabled: false
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+
+# Autoscaling configuration (for standalone mode)
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+# Pod Disruption Budget configuration
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+  # maxUnavailable: 1
+
+# Node affinity configuration
+nodeAffinity:
+  enabled: false
+  requiredDuringSchedulingIgnoredDuringExecution: []
+  preferredDuringSchedulingIgnoredDuringExecution: []
+
+# Pod affinity configuration
+podAffinity:
+  enabled: false
+
+# Pod anti-affinity configuration
+podAntiAffinity:
+  enabled: false
+  type: preferred  # preferred or required
+  topologyKey: kubernetes.io/hostname
+
+# Tolerations
+tolerations: []
+
+# Node selector
+nodeSelector: {}
+
+# Labels
+labels:
+  app: seata-server
+  version: v1
+
+# Annotations
+annotations:
+  operator.seata.apache.org/managed: "true"
+
