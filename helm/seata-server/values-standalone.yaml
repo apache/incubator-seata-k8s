@@ -1,0 +1,66 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# Seata Server Helm Chart - Standalone Mode Values
+
+seataServer:
+  mode: standalone
+  replicas: 1
+  image:
+    repository: apache/seata-server
+    tag: latest
+    pullPolicy: IfNotPresent
+  
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  
+  persistence:
+    enabled: false  # Standalone 通常不需要持久化
+  
+  service:
+    type: ClusterIP
+  
+  # 启用 NodePort 以便从集群外访问
+  nodePort:
+    enabled: true
+    type: NodePort
+    ports:
+      service: 30091
+      console: 30092
+
+# 环境变量
+seataServer:
+  env:
+    - name: console.user.username
+      value: seata
+    - name: console.user.password
+      valueFrom:
+        secretKeyRef:
+          name: seata-credentials
+          key: password
+    - name: store.mode
+      value: file
+    - name: server.port
+      value: "7091"
+    - name: server.servicePort
+      value: "8091"
+

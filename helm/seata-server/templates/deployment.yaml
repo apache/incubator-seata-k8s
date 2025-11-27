@@ -1,0 +1,98 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+{{- if eq .Values.seataServer.mode "standalone" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.seataServer.name }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "seata-server.labels" . | nindent 4 }}
+  annotations:
+    {{- with .Values.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.seataServer.replicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "seata-server.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "seata-server.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- if .Values.podAntiAffinity.enabled }}
+      affinity:
+        podAntiAffinity:
+          {{- if eq .Values.podAntiAffinity.type "required" }}
+          requiredDuringSchedulingIgnoredDuringExecution:
+          {{- else }}
+          preferredDuringSchedulingIgnoredDuringExecution:
+          {{- end }}
+            - labelSelector:
+                matchExpressions:
+                  - key: app.kubernetes.io/name
+                    operator: In
+                    values:
+                      - {{ include "seata-server.name" . }}
+              topologyKey: {{ .Values.podAntiAffinity.topologyKey }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: seata-server
+          image: {{ .Values.seataServer.image.repository }}:{{ .Values.seataServer.image.tag }}
+          imagePullPolicy: {{ .Values.seataServer.image.pullPolicy }}
+          ports:
+            - name: service
+              containerPort: {{ .Values.seataServer.ports.service }}
+              protocol: TCP
+            - name: console
+              containerPort: {{ .Values.seataServer.ports.console }}
+              protocol: TCP
+          env:
+            {{- include "seata-server.env" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.seataServer.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /
+              port: console
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: console
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+{{- end }}
+

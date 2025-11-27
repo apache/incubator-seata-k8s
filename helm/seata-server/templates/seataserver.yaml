@@ -1,0 +1,77 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+{{- if eq .Values.seataServer.mode "cluster" }}
+apiVersion: operator.seata.apache.org/v1
+kind: SeataServer
+metadata:
+  name: {{ .Values.seataServer.name }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "seata-server.labels" . | nindent 4 }}
+  annotations:
+    {{- with .Values.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  # Service name
+  serviceName: {{ .Values.seataServer.service.name }}
+  
+  # Number of replicas
+  replicas: {{ .Values.seataServer.replicas }}
+  
+  # Container image
+  image: {{ .Values.seataServer.image.repository }}:{{ .Values.seataServer.image.tag }}
+  imagePullPolicy: {{ .Values.seataServer.image.pullPolicy }}
+  
+  # Container name
+  containerName: seata-server
+  
+  # Port configuration
+  ports:
+    consolePort: {{ .Values.seataServer.ports.console }}
+    servicePort: {{ .Values.seataServer.ports.service }}
+    raftPort: {{ .Values.seataServer.ports.raft }}
+  
+  # Persistence configuration
+  persistence:
+    volumeReclaimPolicy: {{ .Values.seataServer.persistence.reclaimPolicy }}
+    spec:
+      accessModes:
+        - {{ .Values.seataServer.persistence.accessMode }}
+      {{- if .Values.seataServer.persistence.storageClassName }}
+      storageClassName: {{ .Values.seataServer.persistence.storageClassName }}
+      {{- end }}
+      resources:
+        requests:
+          storage: {{ .Values.seataServer.persistence.size }}
+  
+  # Storage configuration
+  store:
+    resources:
+      requests:
+        storage: {{ .Values.seataServer.persistence.size }}
+  
+  # Resource configuration
+  resources:
+    {{- toYaml .Values.seataServer.resources | nindent 4 }}
+  
+  # Environment variables
+  env:
+    {{- include "seata-server.env" . | nindent 4 }}
+{{- end }}
+
