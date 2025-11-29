@@ -15,32 +15,23 @@
 # limitations under the License.
 #
 
-# Default values for seata-server Helm chart
+# Example values for deploying Seata Server with ValidatingWebhook enabled
+# Usage: helm install seata-server ./seata-server -f values-webhook-enabled.yaml
 
-# Global configuration
 global:
   namespace: default
-  
-# Seata Server configuration
+
 seataServer:
-  # Deployment name
   name: seata-server
-  
-  # Deployment mode: cluster or standalone
-  # cluster: Use SeataServer CRD (requires seata-k8s operator)
-  # standalone: Use Deployment directly
   mode: cluster
   
-  # Image configuration
   image:
     repository: apache/seata-server
     tag: latest
     pullPolicy: IfNotPresent
   
-  # Replica configuration
   replicas: 3
   
-  # Service configuration
   service:
     name: seata-server-cluster
     type: ClusterIP
@@ -61,7 +52,6 @@ seataServer:
         protocol: TCP
         name: raft
   
-  # NodePort Service (for standalone mode)
   nodePort:
     enabled: false
     type: NodePort
@@ -69,7 +59,6 @@ seataServer:
       service: 30091
       console: 30092
   
-  # Resource configuration
   resources:
     requests:
       cpu: 100m
@@ -78,24 +67,19 @@ seataServer:
       cpu: 500m
       memory: 512Mi
   
-  # Persistence configuration
   persistence:
     enabled: true
-    storageClassName: ""  # Leave empty to use default
+    storageClassName: ""
     accessMode: ReadWriteOnce
     size: 5Gi
-    # Volume reclaim policy: Delete or Retain
     reclaimPolicy: Retain
   
-  # Ports configuration
   ports:
     console: 7091
     service: 8091
     raft: 9091
   
-  # Environment variables
   env:
-    # Console credentials
     - name: console.user.username
       value: seata
     - name: console.user.password
@@ -103,7 +87,6 @@ seataServer:
         secretKeyRef:
           name: seata-credentials
           key: password
-    # Store configuration
     - name: store.mode
       value: raft
     - name: server.port
@@ -111,48 +94,26 @@ seataServer:
     - name: server.servicePort
       value: "8091"
 
-# Secret configuration
 secret:
-  # Create secret automatically
   create: true
-  # Secret name
   name: seata-credentials
-  # Password value (base64 encoded in Kubernetes)
   password: seata123456
 
-# PodSecurityPolicy configuration
 podSecurityPolicy:
   enabled: false
 
-# Network Policy configuration
 networkPolicy:
   enabled: false
 
-# Ingress configuration
 ingress:
   enabled: false
-  className: ""
-  annotations: {}
-    # kubernetes.io/ingress.class: nginx
-    # cert-manager.io/cluster-issuer: letsencrypt-prod
-  hosts:
-    - host: seata.example.com
-      paths:
-        - path: /
-          pathType: Prefix
-  tls: []
-    # - secretName: seata-tls
-    #   hosts:
-    #     - seata.example.com
 
-# Monitoring and logging
 monitoring:
   enabled: false
   serviceMonitor:
     enabled: false
     interval: 30s
 
-# Autoscaling configuration (for standalone mode)
 autoscaling:
   enabled: false
   minReplicas: 2
@@ -160,44 +121,35 @@ autoscaling:
   targetCPUUtilizationPercentage: 80
   targetMemoryUtilizationPercentage: 80
 
-# Pod Disruption Budget configuration
 podDisruptionBudget:
   enabled: false
   minAvailable: 1
-  # maxUnavailable: 1
 
-# Node affinity configuration
 nodeAffinity:
   enabled: false
-  requiredDuringSchedulingIgnoredDuringExecution: []
-  preferredDuringSchedulingIgnoredDuringExecution: []
 
-# Pod affinity configuration
 podAffinity:
   enabled: false
 
-# Pod anti-affinity configuration
 podAntiAffinity:
   enabled: false
-  type: preferred  # preferred or required
+  type: preferred
   topologyKey: kubernetes.io/hostname
 
-# Tolerations
 tolerations: []
 
-# Node selector
 nodeSelector: {}
 
-# Labels
 labels:
   app: seata-server
   version: v1
 
-# Annotations
 annotations:
   operator.seata.apache.org/managed: "true"
 
-# Webhook configuration for SeataServer validation (cluster mode only)
+# ============================================================================
+# Webhook Configuration - Enabled with cert-manager
+# ============================================================================
 webhook:
   # Enable validating webhook for SeataServer resources
   enabled: true
@@ -209,37 +161,38 @@ webhook:
   containerPort: 8443
   
   # Failure policy: Fail or Ignore
-  # Fail: reject the request if webhook fails
-  # Ignore: allow the request if webhook fails
+  # Fail: reject the request if webhook fails (more strict)
+  # Ignore: allow the request if webhook fails (more lenient)
   failurePolicy: Fail
   
   # Reinvocation policy: Never or IfNeeded
   reinvocationPolicy: Never
   
   # Namespace selector for webhook
-  # Only validate SeataServer resources in selected namespaces
+  # Only validate SeataServer resources in namespaces with matching labels
   namespaceSelector:
     matchLabels:
       seata-webhook: "enabled"
     matchExpressions: []
+      # Example: match namespaces with specific label
       # - key: seata-validation
       #   operator: In
       #   values: ["enabled"]
   
-  # Certificate management
+  # Certificate management with cert-manager (recommended)
   certManager:
-    # Use cert-manager for automatic certificate management
-    enabled: false
+    enabled: true
   
-  # TLS certificate and key (base64 encoded)
-  # Only used when certManager.enabled is false
-  # Generate using: openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes
-  # Then base64 encode: base64 < cert.pem | base64 -d
+  # TLS certificate and key (only used when certManager.enabled=false)
+  # Generate using:
+  #   openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes
+  # Encode using:
+  #   cat cert.pem | base64 | tr -d '\n'
   tls:
-    crt: ""  # base64 encoded certificate
-    key: ""  # base64 encoded private key
+    crt: ""
+    key: ""
   
   # CA Bundle (base64 encoded)
-  # This should be the base64 encoded CA certificate used to sign the webhook server certificate
+  # This is the CA certificate that signed the webhook TLS certificate
   caBundle: ""
 

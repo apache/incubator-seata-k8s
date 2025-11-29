@@ -1,0 +1,105 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+{{- if and .Values.webhook.enabled (eq .Values.seataServer.mode "cluster") }}
+# Webhook ClusterRole for SeataServer validation
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "seata-server.fullname" . }}-webhook
+  labels:
+    {{- include "seata-server.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook
+rules:
+  # Allow reading SeataServer resources
+  - apiGroups: ["operator.seata.apache.org"]
+    resources: ["seataservers"]
+    verbs: ["get", "list", "watch"]
+  # Allow reading SeataServer status
+  - apiGroups: ["operator.seata.apache.org"]
+    resources: ["seataservers/status"]
+    verbs: ["get"]
+  # Allow reading core API resources needed for validation
+  - apiGroups: [""]
+    resources: ["services", "persistentvolumeclaims", "configmaps"]
+    verbs: ["get", "list"]
+  # Allow reading storage class information
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list"]
+
+---
+# Webhook ClusterRoleBinding for SeataServer validation
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "seata-server.fullname" . }}-webhook
+  labels:
+    {{- include "seata-server.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "seata-server.fullname" . }}-webhook
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "seata-server.fullname" . }}-webhook
+    namespace: {{ .Release.Namespace }}
+
+---
+# Role for webhook to manage its own resources in the namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "seata-server.fullname" . }}-webhook
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "seata-server.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook
+rules:
+  # Allow reading secrets (for webhook certificates)
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+    resourceNames: 
+      - {{ include "seata-server.fullname" . }}-webhook-certs
+  # Allow reading configmaps
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+
+---
+# RoleBinding for webhook namespace-scoped permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "seata-server.fullname" . }}-webhook
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "seata-server.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "seata-server.fullname" . }}-webhook
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "seata-server.fullname" . }}-webhook
+    namespace: {{ .Release.Namespace }}
+
+{{- end }}
+
