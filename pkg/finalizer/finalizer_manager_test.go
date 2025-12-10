@@ -19,12 +19,12 @@ package finalizer
 
 import (
 	"context"
+	"k8s.io/apimachinery/pkg/runtime"
 	"testing"
 
 	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	seatav1 "github.com/apache/seata-k8s/api/v1"
@@ -293,7 +293,7 @@ func TestFinalizerManager_GetNamespacedName(t *testing.T) {
 	}
 }
 
-func createTestScheme() *client.Scheme {
+func createTestScheme() *runtime.Scheme {
 	scheme := fake.NewClientBuilder().Build().Scheme()
 	_ = seatav1.AddToScheme(scheme)
 	return scheme
