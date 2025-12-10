@@ -19,15 +19,14 @@ package finalizer
 
 import (
 	"context"
-	"k8s.io/apimachinery/pkg/runtime"
-	"testing"
-
+	seatav1 "github.com/apache/seata-k8s/api/v1"
 	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-
-	seatav1 "github.com/apache/seata-k8s/api/v1"
+	"testing"
+	"time"
 )
 
 func TestFinalizerManager_AddFinalizer(t *testing.T) {
@@ -245,12 +244,25 @@ func TestFinalizerManager_IsBeingDeleted(t *testing.T) {
 			expected: false,
 		},
 		{
-			name: "seataserver being deleted",
+			name: "seataserver not being deleted",
 			seataServer: &seatav1.SeataServer{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:              "test-seata",
 					Namespace:         "default",
-					DeletionTimestamp: &metav1.Time{},
+					DeletionTimestamp: &metav1.Time{Time: time.Time{}},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "seataserver being deleted",
+			seataServer: &seatav1.SeataServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-seata",
+					Namespace: "default",
+					DeletionTimestamp: &metav1.Time{
+						Time: time.Now(),
+					},
 				},
 			},
 			expected: true,
