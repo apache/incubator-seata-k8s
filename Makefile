@@ -15,12 +15,22 @@
 # limitations under the License.
 #
 
+#
 # VERSION defines the project version for the bundle.
 # Update this value when you upgrade the version of your project.
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
 VERSION ?= 0.0.1
+GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+GIT_BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+BUILD_TIME ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
+
+# Release configuration
+RELEASE_DIR ?= dist
+HELM_CHART_DIR ?= helm/seata-server
+HELM_CHART_NAME ?= seata-server-$(VERSION).tgz
+HELM_CHART_PATH ?= $(RELEASE_DIR)/$(HELM_CHART_NAME)
 
 # CHANNELS define the bundle channels used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g CHANNELS = "candidate,fast,stable")
@@ -296,3 +306,192 @@ catalog-build: opm ## Build a catalog image.
 .PHONY: catalog-push
 catalog-push: ## Push a catalog image.
 	$(MAKE) docker-push IMG=$(CATALOG_IMG)
+
+##@ Release
+
+.PHONY: clean
+clean: ## Clean build artifacts and release directory.
+	rm -rf bin/ dist/ cover.out
+	@echo "✓ Cleaned build artifacts"
+
+.PHONY: release-dir
+release-dir: ## Create release directory.
+	mkdir -p $(RELEASE_DIR)
+	@echo "✓ Created release directory"
+
+.PHONY: helm-package
+helm-package: release-dir ## Package Helm chart.
+	@echo "🔄 Packaging Helm chart..."
+	@if [ ! -d "$(HELM_CHART_DIR)" ]; then \
+		echo "❌ Helm chart directory not found: $(HELM_CHART_DIR)"; \
+		exit 1; \
+	fi
+	helm lint $(HELM_CHART_DIR)
+	helm package $(HELM_CHART_DIR) --destination=$(RELEASE_DIR) --version=$(VERSION)
+	@echo "✓ Helm chart packaged: $(HELM_CHART_PATH)"
+
+.PHONY: helm-values
+helm-values: ## Generate Helm values file for release.
+	@echo "🔄 Generating Helm values..."
+	@echo "# Seata Server Helm Chart Values - Version $(VERSION)" > $(RELEASE_DIR)/values-$(VERSION).yaml
+	@echo "# Build Time: $(BUILD_TIME)" >> $(RELEASE_DIR)/values-$(VERSION).yaml
+	@echo "# Git Commit: $(GIT_COMMIT)" >> $(RELEASE_DIR)/values-$(VERSION).yaml
+	@echo "" >> $(RELEASE_DIR)/values-$(VERSION).yaml
+	@cat $(HELM_CHART_DIR)/values.yaml >> $(RELEASE_DIR)/values-$(VERSION).yaml
+	@echo "✓ Generated Helm values file: $(RELEASE_DIR)/values-$(VERSION).yaml"
+
+.PHONY: build-release
+build-release: clean test helm-package helm-values ## Build release artifacts (controller + helm chart).
+	@echo ""
+	@echo "✓ Release build completed!"
+	@echo ""
+	@echo "📦 Release artifacts:"
+	@ls -lh $(RELEASE_DIR)/
+	@echo ""
+	@echo "📋 Next steps:"
+	@echo "   1. Review release artifacts in $(RELEASE_DIR)/"
+	@echo "   2. Create a git tag: git tag v$(VERSION)"
+	@echo "   3. Push tag: git push origin v$(VERSION)"
+	@echo "   4. Use 'make release-push' to publish artifacts"
+
+.PHONY: release-push
+release-push: docker-push bundle-push catalog-push ## Push all release artifacts (Docker images, bundle, catalog).
+	@echo ""
+	@echo "✓ All release artifacts pushed!"
+
+.PHONY: release-all
+release-all: build-release release-push ## Build and push all release artifacts.
+
+.PHONY: helm-install
+helm-install: helm-package ## Install Helm chart to local cluster.
+	@echo "🔄 Installing Helm chart..."
+	helm install seata-server $(HELM_CHART_PATH) --namespace seata-k8s-controller-manager --create-namespace
+	@echo "✓ Helm chart installed"
+
+.PHONY: helm-upgrade
+helm-upgrade: helm-package ## Upgrade Helm chart in local cluster.
+	@echo "🔄 Upgrading Helm chart..."
+	helm upgrade seata-server $(HELM_CHART_PATH) --namespace seata-k8s-controller-manager
+	@echo "✓ Helm chart upgraded"
+
+.PHONY: helm-uninstall
+helm-uninstall: ## Uninstall Helm chart from local cluster.
+	@echo "🔄 Uninstalling Helm chart..."
+	helm uninstall seata-server --namespace seata-k8s-controller-manager
+	@echo "✓ Helm chart uninstalled"
+
+##@ Code Quality
+
+.PHONY: lint
+lint: fmt vet ## Run linting checks (fmt + vet).
+	@echo "✓ Linting passed"
+
+.PHONY: coverage
+coverage: test ## Generate code coverage report.
+	@echo "✓ Coverage report generated: cover.out"
+	@go tool cover -html=cover.out -o coverage.html
+	@echo "✓ HTML coverage report: coverage.html"
+
+.PHONY: check-all
+check-all: lint test coverage ## Run all checks (lint, test, coverage).
+	@echo ""
+	@echo "✓ All checks passed!"
+
+##@ Documentation
+
+.PHONY: docs
+docs: ## Display project documentation.
+	@echo "📚 Seata-K8s Project Documentation"
+	@echo ""
+	@echo "Available Make Targets:"
+	@echo "========================"
+	@make help
+	@echo ""
+	@echo "Common Workflows:"
+	@echo "================="
+	@echo ""
+	@echo "1. Development:"
+	@echo "   make run              # Run controller locally"
+	@echo "   make test             # Run tests"
+	@echo "   make fmt              # Format code"
+	@echo ""
+	@echo "2. Docker Build:"
+	@echo "   make docker-build     # Build Docker image"
+	@echo "   make docker-push      # Push Docker image"
+	@echo ""
+	@echo "3. Helm Operations:"
+	@echo "   make helm-package     # Package Helm chart"
+	@echo "   make helm-install     # Install to cluster"
+	@echo "   make helm-upgrade     # Upgrade in cluster"
+	@echo ""
+	@echo "4. Release:"
+	@echo "   make build-release    # Build all release artifacts"
+	@echo "   make release-all      # Build and push all artifacts"
+	@echo ""
+	@echo "5. Debugging:"
+	@echo "   make deploy           # Deploy to cluster"
+	@echo "   make undeploy         # Remove from cluster"
+	@echo ""
+
+.PHONY: info
+info: ## Display build information.
+	@echo "📋 Build Information"
+	@echo "===================="
+	@echo "Project Name:       $(shell grep -m1 'name: ' PROJECT | awk '{print $$2}')"
+	@echo "Version:            $(VERSION)"
+	@echo "Git Commit:         $(GIT_COMMIT)"
+	@echo "Git Branch:         $(GIT_BRANCH)"
+	@echo "Build Time:         $(BUILD_TIME)"
+	@echo "Go Version:         $(shell go version | awk '{print $$3}')"
+	@echo "OS/Arch:            $(shell go env GOOS)/$(shell go env GOARCH)"
+	@echo ""
+	@echo "Build Targets:"
+	@echo "=============="
+	@echo "Docker Image:       $(IMG)"
+	@echo "Bundle Image:       $(BUNDLE_IMG)"
+	@echo "Catalog Image:      $(CATALOG_IMG)"
+	@echo "Helm Chart:         $(HELM_CHART_NAME)"
+	@echo ""
+
+##@ CI/CD
+
+.PHONY: ci
+ci: check-all docker-build helm-package ## Run CI pipeline (checks, build, package).
+	@echo ""
+	@echo "✓ CI pipeline completed successfully!"
+
+.PHONY: cd
+cd: docker-push helm-package ## Run CD pipeline (push images, package chart).
+	@echo ""
+	@echo "✓ CD pipeline completed successfully!"
+
+.PHONY: docker-buildx-minimal
+docker-buildx-minimal: docker-buildx ## Build and push Docker image for all platforms (minimal build without tests).
+	@echo "✓ Docker image built and pushed for all platforms"
+
+##@ Quick Commands
+
+.PHONY: quick-test
+quick-test: fmt vet ## Quick test without coverage (faster).
+	go test ./... -short
+	@echo "✓ Quick tests completed"
+
+.PHONY: quick-build
+quick-build: manifests generate fmt vet ## Quick build without tests.
+	go build -o bin/manager main.go
+	@echo "✓ Quick build completed"
+
+.PHONY: setup
+setup: $(LOCALBIN) kustomize controller-gen envtest operator-sdk opm ## Setup all build dependencies.
+	@echo "✓ Build dependencies installed"
+	@echo ""
+	@echo "Ready for development! Run 'make run' to start the controller."
+
+##@ Build Info
+
+.PHONY: version
+version: ## Display version information.
+	@echo "Version: $(VERSION)"
+	@echo "Commit:  $(GIT_COMMIT)"
+	@echo "Branch:  $(GIT_BRANCH)"
+	@echo "Time:    $(BUILD_TIME)"
