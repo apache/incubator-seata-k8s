@@ -1,0 +1,76 @@
+---
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Codecov 配置文件
+
+# 覆盖范围设置
+coverage:
+  # 精度
+  precision: 2
+  # 圆整方式: 分数值（默认）或向下舍入
+  round: down
+  # 覆盖状态
+  status:
+    # 总覆盖率检查
+    project:
+      default:
+        # 目标：总覆盖率至少 60%
+        target: 60
+        # 阈值：允许下降 5%
+        threshold: 5
+        # 是否为目标设置强制要求
+        base: auto
+    # 补丁覆盖率检查
+    patch:
+      default:
+        # 补丁覆盖率至少 70%
+        target: 70
+        # 允许下降 5%
+        threshold: 5
+
+# 忽略设置
+ignore:
+  - "**/*_test.go"
+  - "**/zz_generated*.go"
+  - "hack"
+
+# 正确设置
+fixes:
+  - "::gocov"
+
+# 注释设置
+comment:
+  # 显示覆盖率
+  layout: "reach,diff,flags,tree"
+  # 是否创建并更新注释
+  require_changes: false
+  require_base: false
+  require_head: true
+  # 删除过期的注释
+  delete: false
+
+# PR 检查
+github_checks:
+  # 创建检查
+  annotations: true
+
+# 通知设置
+notifications:
+  # 使用默认通知
+  webhook:
+    only_pulls: false
+    require_ci_to_pass: true
+

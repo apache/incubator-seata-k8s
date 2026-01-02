@@ -27,3 +27,12 @@ jobs:
 
       - name: Docker Build And Go Test
         run: make docker-build
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./cover.out
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+          verbose: true
