@@ -19,6 +19,9 @@
 
 [中文文档](README.zh.md) | [English](README.md)
 
+[![build](https://github.com/apache/incubator-seata-k8s/actions/workflows/build.yml/badge.svg)](https://github.com/apache/incubator-seata-k8s/actions/workflows/build.yml)
+[![codecov](https://codecov.io/gh/apache/incubator-seata-k8s/branch/master/graph/badge.svg)](https://codecov.io/gh/apache/incubator-seata-k8s)
+
 ## Overview
 
 seata-k8s is a Kubernetes operator for deploying and managing [Apache Seata](https://github.com/seata/seata) distributed transaction servers. It provides a streamlined way to deploy Seata Server clusters on Kubernetes with automatic scaling, persistence management, and operational simplicity.
