@@ -20,7 +20,7 @@
 [中文文档](README.zh.md) | [English](README.md)
 
 [![build](https://github.com/apache/incubator-seata-k8s/actions/workflows/build.yml/badge.svg)](https://github.com/apache/incubator-seata-k8s/actions/workflows/build.yml)
-[![codecov](https://codecov.io/gh/apache/incubator-seata-k8s/branch/master/graph/badge.svg)](https://codecov.io/gh/apache/incubator-seata-k8s)
+[![codecov](https://codecov.io/gh/apache/incubator-seata-k8s/graph/badge.svg?token=zGKxnk5bT1)](https://codecov.io/gh/apache/incubator-seata-k8s)
 
 ## Overview
 
