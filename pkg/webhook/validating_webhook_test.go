@@ -742,3 +742,281 @@ func TestValidateResourceRequirements(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateSeataServer_ComprehensiveCases(t *testing.T) {
+	testCases := []struct {
+		name   string
+		server *seatav1.SeataServer
+		valid  bool
+	}{
+		{
+			name: "invalid image format",
+			server: &seatav1.SeataServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "default",
+				},
+				Spec: seatav1.SeataServerSpec{
+					ContainerSpec: seatav1.ContainerSpec{
+						Image: "",
+					},
+					ServiceName: "seata",
+					Replicas:    1,
+				},
+			},
+			valid: false,
+		},
+		{
+			name: "invalid replicas negative",
+			server: &seatav1.SeataServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "default",
+				},
+				Spec: seatav1.SeataServerSpec{
+					ContainerSpec: seatav1.ContainerSpec{
+						Image: "seata:latest",
+					},
+					ServiceName: "seata",
+					Replicas:    -1,
+				},
+			},
+			valid: false,
+		},
+		{
+			name: "invalid port zero",
+			server: &seatav1.SeataServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "default",
+				},
+				Spec: seatav1.SeataServerSpec{
+					ContainerSpec: seatav1.ContainerSpec{
+						Image: "seata:latest",
+					},
+					ServiceName: "seata",
+					Replicas:    1,
+					Ports: seatav1.Ports{
+						ServicePort: 0,
+						ConsolePort: 7091,
+						RaftPort:    9091,
+					},
+				},
+			},
+			valid: false,
+		},
+		{
+			name: "invalid storage too small",
+			server: &seatav1.SeataServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "default",
+				},
+				Spec: seatav1.SeataServerSpec{
+					ContainerSpec: seatav1.ContainerSpec{
+						Image: "seata:latest",
+					},
+					ServiceName: "seata",
+					Replicas:    1,
+					Ports: seatav1.Ports{
+						ServicePort: 8091,
+						ConsolePort: 7091,
+						RaftPort:    9091,
+					},
+					Persistence: seatav1.Persistence{
+						PersistentVolumeClaimSpec: apiv1.PersistentVolumeClaimSpec{
+							Resources: apiv1.ResourceRequirements{
+								Requests: apiv1.ResourceList{
+									apiv1.ResourceStorage: resource.MustParse("100Mi"),
+								},
+							},
+						},
+					},
+				},
+			},
+			valid: false,
+		},
+		{
+			name: "valid with all fields",
+			server: &seatav1.SeataServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-seata",
+					Namespace: "production",
+				},
+				Spec: seatav1.SeataServerSpec{
+					ContainerSpec: seatav1.ContainerSpec{
+						Image: "docker.io/apache/seata-server:1.5.2",
+						Env: []apiv1.EnvVar{
+							{Name: "LOG_LEVEL", Value: "info"},
+							{Name: "SEATA_ENV", Value: "production"},
+						},
+						Resources: apiv1.ResourceRequirements{
+							Requests: apiv1.ResourceList{
+								apiv1.ResourceCPU:    resource.MustParse("500m"),
+								apiv1.ResourceMemory: resource.MustParse("1Gi"),
+							},
+							Limits: apiv1.ResourceList{
+								apiv1.ResourceCPU:    resource.MustParse("2000m"),
+								apiv1.ResourceMemory: resource.MustParse("4Gi"),
+							},
+						},
+					},
+					ServiceName: "seata-server-prod",
+					Replicas:    5,
+					Ports: seatav1.Ports{
+						ServicePort: 8091,
+						ConsolePort: 7091,
+						RaftPort:    9091,
+					},
+					Persistence: seatav1.Persistence{
+						VolumeReclaimPolicy: seatav1.VolumeReclaimPolicyRetain,
+						PersistentVolumeClaimSpec: apiv1.PersistentVolumeClaimSpec{
+							Resources: apiv1.ResourceRequirements{
+								Requests: apiv1.ResourceList{
+									apiv1.ResourceStorage: resource.MustParse("20Gi"),
+								},
+							},
+						},
+					},
+				},
+			},
+			valid: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			errors := ValidateSeataServer(tc.server)
+			if (len(errors) == 0) != tc.valid {
+				t.Errorf("expected valid=%v, got errors=%v", tc.valid, errors)
+			}
+		})
+	}
+}
+
+func TestValidateStorage_EdgeCases(t *testing.T) {
+	testCases := []struct {
+		name        string
+		persistence *seatav1.Persistence
+		valid       bool
+	}{
+		{
+			name: "storage at minimum boundary",
+			persistence: &seatav1.Persistence{
+				PersistentVolumeClaimSpec: apiv1.PersistentVolumeClaimSpec{
+					Resources: apiv1.ResourceRequirements{
+						Requests: apiv1.ResourceList{
+							apiv1.ResourceStorage: resource.MustParse("1Gi"),
+						},
+					},
+				},
+			},
+			valid: true,
+		},
+		{
+			name: "storage at maximum boundary",
+			persistence: &seatav1.Persistence{
+				PersistentVolumeClaimSpec: apiv1.PersistentVolumeClaimSpec{
+					Resources: apiv1.ResourceRequirements{
+						Requests: apiv1.ResourceList{
+							apiv1.ResourceStorage: resource.MustParse("1000Gi"),
+						},
+					},
+				},
+			},
+			valid: true,
+		},
+		{
+			name:        "nil persistence",
+			persistence: nil,
+			valid:       true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateStorage(tc.persistence)
+			if (err == nil) != tc.valid {
+				t.Errorf("expected valid=%v, got error=%v", tc.valid, err)
+			}
+		})
+	}
+}
+
+func TestValidatePorts_EdgeCases(t *testing.T) {
+	testCases := []struct {
+		name  string
+		ports seatav1.Ports
+		valid bool
+	}{
+		{
+			name: "ports at minimum",
+			ports: seatav1.Ports{
+				ServicePort: 1,
+				ConsolePort: 2,
+				RaftPort:    3,
+			},
+			valid: true,
+		},
+		{
+			name: "ports at maximum",
+			ports: seatav1.Ports{
+				ServicePort: 65535,
+				ConsolePort: 65534,
+				RaftPort:    65533,
+			},
+			valid: true,
+		},
+		{
+			name: "all ports same - invalid",
+			ports: seatav1.Ports{
+				ServicePort: 8091,
+				ConsolePort: 8091,
+				RaftPort:    8091,
+			},
+			valid: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validatePorts(tc.ports)
+			if (err == nil) != tc.valid {
+				t.Errorf("expected valid=%v, got error=%v", tc.valid, err)
+			}
+		})
+	}
+}
+
+func TestValidateImage_EdgeCases(t *testing.T) {
+	testCases := []struct {
+		name  string
+		image string
+		valid bool
+	}{
+		{
+			name:  "image with digest",
+			image: "apache/seata-server@sha256:1234567890abcdef",
+			valid: true,
+		},
+		{
+			name:  "simple image name",
+			image: "seata",
+			valid: true,
+		},
+		{
+			name:  "fully qualified image",
+			image: "docker.io/apache/seata-server:1.5.2",
+			valid: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateImage(tc.image)
+			if (err == nil) != tc.valid {
+				t.Errorf("expected valid=%v, got error=%v", tc.valid, err)
+			}
+		})
+	}
+}

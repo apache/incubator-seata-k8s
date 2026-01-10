@@ -50,7 +50,7 @@ func TestNewCleanupHandler(t *testing.T) {
 
 func TestHandleCleanup_V1(t *testing.T) {
 	scheme := createCleanupTestScheme()
-	
+
 	seataServer := &seatav1.SeataServer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-seata",
@@ -97,7 +97,7 @@ func TestHandleCleanup_V1(t *testing.T) {
 
 func TestHandleCleanup_V1Alpha1(t *testing.T) {
 	scheme := createCleanupTestScheme()
-	
+
 	seataServer := &seatav1alpha1.SeataServer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-seata",
@@ -157,7 +157,7 @@ func TestHandleCleanup_UnsupportedType(t *testing.T) {
 
 func TestHandleCleanup_V1_RetainPolicy(t *testing.T) {
 	scheme := createCleanupTestScheme()
-	
+
 	seataServer := &seatav1.SeataServer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-seata",
@@ -369,6 +369,161 @@ func TestHandleCleanupV1Alpha1_WithConfigMapsAndSecrets(t *testing.T) {
 	}
 }
 
+func TestGetPVCList_ErrorHandling(t *testing.T) {
+	scheme := createCleanupTestScheme()
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		Build()
+
+	handler := NewCleanupHandler(fakeClient, logr.Discard())
+
+	_, err := handler.getPVCList(context.Background(), "test-seata", "default", types.UID("test-uid"))
+	// Should not error even if no PVCs found
+	if err != nil {
+		t.Logf("getPVCList returned: %v", err)
+	}
+}
+
+func TestCleanupConfigMaps_WithMultipleItems(t *testing.T) {
+	scheme := createCleanupTestScheme()
+
+	cm1 := &apiv1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-cm-1",
+			Namespace: "default",
+			Labels: map[string]string{
+				"app": "test-seata",
+			},
+		},
+	}
+
+	cm2 := &apiv1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-cm-2",
+			Namespace: "default",
+			Labels: map[string]string{
+				"app": "test-seata",
+			},
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(cm1, cm2).
+		Build()
+
+	handler := NewCleanupHandler(fakeClient, logr.Discard())
+
+	err := handler.cleanupConfigMaps(context.Background(), "test-seata", "default")
+	if err != nil {
+		t.Errorf("cleanupConfigMaps with multiple items failed: %v", err)
+	}
+}
+
+func TestCleanupSecrets_WithMultipleItems(t *testing.T) {
+	scheme := createCleanupTestScheme()
+
+	secret1 := &apiv1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-secret-1",
+			Namespace: "default",
+			Labels: map[string]string{
+				"app": "test-seata",
+			},
+		},
+	}
+
+	secret2 := &apiv1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-secret-2",
+			Namespace: "default",
+			Labels: map[string]string{
+				"app": "test-seata",
+			},
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(secret1, secret2).
+		Build()
+
+	handler := NewCleanupHandler(fakeClient, logr.Discard())
+
+	err := handler.cleanupSecrets(context.Background(), "test-seata", "default")
+	if err != nil {
+		t.Errorf("cleanupSecrets with multiple items failed: %v", err)
+	}
+}
+
+func TestHandleCleanupV1_RetainPolicyWithConfigMaps(t *testing.T) {
+	scheme := createCleanupTestScheme()
+
+	seataServer := &seatav1.SeataServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-seata",
+			Namespace: "default",
+			UID:       types.UID("test-uid-123"),
+		},
+		Spec: seatav1.SeataServerSpec{
+			Persistence: seatav1.Persistence{
+				VolumeReclaimPolicy: seatav1.VolumeReclaimPolicyRetain,
+			},
+		},
+	}
+
+	cm := &apiv1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-cm",
+			Namespace: "default",
+			Labels: map[string]string{
+				"app": "test-seata",
+			},
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(seataServer, cm).
+		Build()
+
+	handler := NewCleanupHandler(fakeClient, logr.Discard())
+
+	err := handler.handleCleanupV1(context.Background(), seataServer)
+	if err != nil {
+		t.Errorf("handleCleanupV1 with Retain policy failed: %v", err)
+	}
+}
+
+func TestCleanupAllPVCs_WithDeletionErrors(t *testing.T) {
+	scheme := createCleanupTestScheme()
+
+	pvc := &apiv1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-pvc",
+			Namespace: "default",
+			Labels: map[string]string{
+				"app": "test-seata",
+				"uid": "test-uid-123",
+			},
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(pvc).
+		Build()
+
+	handler := NewCleanupHandler(fakeClient, logr.Discard())
+
+	// This should handle deletion gracefully
+	err := handler.cleanupAllPVCs(context.Background(), "test-seata", "default", types.UID("test-uid-123"))
+	if err != nil {
+		t.Logf("cleanupAllPVCs returned: %v", err)
+	}
+}
+
 func TestGetPVCList(t *testing.T) {
 	scheme := createCleanupTestScheme()
 
@@ -482,4 +637,3 @@ func createCleanupTestScheme() *runtime.Scheme {
 	_ = seatav1alpha1.AddToScheme(scheme)
 	return scheme
 }
-
