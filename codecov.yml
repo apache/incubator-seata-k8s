@@ -42,13 +42,7 @@ comment:
   require_changes: false
   require_base: false
   require_head: true
-  delete: false
 
 github_checks:
   annotations: true
-
-notifications:
-  webhook:
-    only_pulls: false
-    require_ci_to_pass: true
 
