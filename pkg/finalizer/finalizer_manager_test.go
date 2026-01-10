@@ -526,6 +526,172 @@ func TestFinalizerManager_IsBeingDeleted_UnsupportedType(t *testing.T) {
 	}
 }
 
+func TestFinalizerManager_IsBeingDeleted_V1Alpha1(t *testing.T) {
+	now := metav1.Now()
+
+	testCases := []struct {
+		name     string
+		server   *seatav1alpha1.SeataServer
+		expected bool
+	}{
+		{
+			name: "being deleted",
+			server: &seatav1alpha1.SeataServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "test-seata",
+					Namespace:         "default",
+					DeletionTimestamp: &now,
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "not being deleted",
+			server: &seatav1alpha1.SeataServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-seata",
+					Namespace: "default",
+				},
+			},
+			expected: false,
+		},
+	}
+
+	fm := &FinalizerManager{
+		Client: nil,
+		Log:    logr.Discard(),
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := fm.IsBeingDeleted(tc.server)
+			if result != tc.expected {
+				t.Errorf("expected %v, got %v", tc.expected, result)
+			}
+		})
+	}
+}
+
+func TestFinalizerManager_AddFinalizer_V1_UpdateError(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = seatav1.AddToScheme(scheme)
+
+	seataServer := &seatav1.SeataServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "test-seata",
+			Namespace:  "default",
+			Finalizers: []string{},
+		},
+	}
+
+	// Don't add the object to the fake client, so update will fail
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		Build()
+
+	fm := &FinalizerManager{
+		Client: fakeClient,
+		Log:    logr.Discard(),
+	}
+
+	ctx := context.Background()
+	err := fm.AddFinalizer(ctx, seataServer, SeataFinalizerName)
+
+	if err == nil {
+		t.Error("Expected error when updating non-existent object")
+	}
+}
+
+func TestFinalizerManager_RemoveFinalizer_V1_UpdateError(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = seatav1.AddToScheme(scheme)
+
+	seataServer := &seatav1.SeataServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "test-seata",
+			Namespace:  "default",
+			Finalizers: []string{SeataFinalizerName},
+		},
+	}
+
+	// Don't add the object to the fake client, so update will fail
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		Build()
+
+	fm := &FinalizerManager{
+		Client: fakeClient,
+		Log:    logr.Discard(),
+	}
+
+	ctx := context.Background()
+	err := fm.RemoveFinalizer(ctx, seataServer, SeataFinalizerName)
+
+	if err == nil {
+		t.Error("Expected error when updating non-existent object")
+	}
+}
+
+func TestFinalizerManager_AddFinalizer_V1Alpha1_UpdateError(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = seatav1alpha1.AddToScheme(scheme)
+
+	seataServer := &seatav1alpha1.SeataServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "test-seata",
+			Namespace:  "default",
+			Finalizers: []string{},
+		},
+	}
+
+	// Don't add the object to the fake client, so update will fail
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		Build()
+
+	fm := &FinalizerManager{
+		Client: fakeClient,
+		Log:    logr.Discard(),
+	}
+
+	ctx := context.Background()
+	err := fm.AddFinalizer(ctx, seataServer, SeataFinalizerName)
+
+	if err == nil {
+		t.Error("Expected error when updating non-existent object")
+	}
+}
+
+func TestFinalizerManager_RemoveFinalizer_V1Alpha1_UpdateError(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = seatav1alpha1.AddToScheme(scheme)
+
+	seataServer := &seatav1alpha1.SeataServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "test-seata",
+			Namespace:  "default",
+			Finalizers: []string{SeataFinalizerName},
+		},
+	}
+
+	// Don't add the object to the fake client, so update will fail
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		Build()
+
+	fm := &FinalizerManager{
+		Client: fakeClient,
+		Log:    logr.Discard(),
+	}
+
+	ctx := context.Background()
+	err := fm.RemoveFinalizer(ctx, seataServer, SeataFinalizerName)
+
+	if err == nil {
+		t.Error("Expected error when updating non-existent object")
+	}
+}
+
 func createTestScheme() *runtime.Scheme {
 	scheme := fake.NewClientBuilder().Build().Scheme()
 	_ = seatav1.AddToScheme(scheme)

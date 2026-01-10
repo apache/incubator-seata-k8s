@@ -18,11 +18,18 @@
 package webhook
 
 import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	admissionv1 "k8s.io/api/admission/v1"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
 
 	seatav1 "github.com/apache/seata-k8s/api/v1"
 )
@@ -397,6 +404,209 @@ func TestValidateResourceQuantity(t *testing.T) {
 				t.Errorf("expected valid=%v, got error=%v", tc.valid, err)
 			}
 		})
+	}
+}
+
+func TestNewValidatingWebhookHandler(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = seatav1.AddToScheme(scheme)
+	_ = apiv1.AddToScheme(scheme)
+	
+	codecs := serializer.NewCodecFactory(scheme)
+	decoder := codecs.UniversalDeserializer()
+
+	handler := NewValidatingWebhookHandler(decoder)
+
+	if handler == nil {
+		t.Fatal("NewValidatingWebhookHandler returned nil")
+	}
+
+	if handler.decoder == nil {
+		t.Error("decoder should not be nil")
+	}
+}
+
+func TestHandleSeataServerValidation_ValidRequest(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = seatav1.AddToScheme(scheme)
+	_ = apiv1.AddToScheme(scheme)
+	
+	codecs := serializer.NewCodecFactory(scheme)
+	decoder := codecs.UniversalDeserializer()
+
+	handler := NewValidatingWebhookHandler(decoder)
+
+	seataServer := &seatav1.SeataServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-seata",
+			Namespace: "default",
+		},
+		Spec: seatav1.SeataServerSpec{
+			ContainerSpec: seatav1.ContainerSpec{
+				Image: "apache/seata-server:latest",
+			},
+			Replicas:    3,
+			ServiceName: "seata-server",
+			Ports: seatav1.Ports{
+				ServicePort: 8091,
+				ConsolePort: 7091,
+				RaftPort:    9091,
+			},
+			Persistence: seatav1.Persistence{
+				VolumeReclaimPolicy: seatav1.VolumeReclaimPolicyRetain,
+				PersistentVolumeClaimSpec: apiv1.PersistentVolumeClaimSpec{
+					Resources: apiv1.ResourceRequirements{
+						Requests: apiv1.ResourceList{
+							apiv1.ResourceStorage: resource.MustParse("5Gi"),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	seataServerJSON, _ := json.Marshal(seataServer)
+
+	admissionReview := admissionv1.AdmissionReview{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "admission.k8s.io/v1",
+			Kind:       "AdmissionReview",
+		},
+		Request: &admissionv1.AdmissionRequest{
+			UID: "test-uid",
+			Object: runtime.RawExtension{
+				Raw: seataServerJSON,
+			},
+		},
+	}
+
+	body, _ := json.Marshal(admissionReview)
+	req := httptest.NewRequest(http.MethodPost, "/validate", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+
+	handler.HandleSeataServerValidation(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+
+	var response admissionv1.AdmissionReview
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
+
+	if response.Response == nil {
+		t.Fatal("response should not be nil")
+	}
+
+	if !response.Response.Allowed {
+		t.Errorf("expected allowed=true, got false with message: %s", response.Response.Result.Message)
+	}
+}
+
+func TestHandleSeataServerValidation_InvalidRequest(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = seatav1.AddToScheme(scheme)
+	_ = apiv1.AddToScheme(scheme)
+	
+	codecs := serializer.NewCodecFactory(scheme)
+	decoder := codecs.UniversalDeserializer()
+
+	handler := NewValidatingWebhookHandler(decoder)
+
+	seataServer := &seatav1.SeataServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-seata",
+			Namespace: "default",
+		},
+		Spec: seatav1.SeataServerSpec{
+			ContainerSpec: seatav1.ContainerSpec{
+				Image: "",
+			},
+			Replicas:    0,
+			ServiceName: "",
+		},
+	}
+
+	seataServerJSON, _ := json.Marshal(seataServer)
+
+	admissionReview := admissionv1.AdmissionReview{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "admission.k8s.io/v1",
+			Kind:       "AdmissionReview",
+		},
+		Request: &admissionv1.AdmissionRequest{
+			UID: "test-uid",
+			Object: runtime.RawExtension{
+				Raw: seataServerJSON,
+			},
+		},
+	}
+
+	body, _ := json.Marshal(admissionReview)
+	req := httptest.NewRequest(http.MethodPost, "/validate", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+
+	handler.HandleSeataServerValidation(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+
+	var response admissionv1.AdmissionReview
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
+
+	if response.Response == nil {
+		t.Fatal("response should not be nil")
+	}
+
+	if response.Response.Allowed {
+		t.Error("expected allowed=false for invalid SeataServer")
+	}
+}
+
+func TestHandleSeataServerValidation_InvalidJSON(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = seatav1.AddToScheme(scheme)
+	
+	codecs := serializer.NewCodecFactory(scheme)
+	decoder := codecs.UniversalDeserializer()
+
+	handler := NewValidatingWebhookHandler(decoder)
+
+	req := httptest.NewRequest(http.MethodPost, "/validate", bytes.NewReader([]byte("invalid json")))
+	w := httptest.NewRecorder()
+
+	handler.HandleSeataServerValidation(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", w.Code)
+	}
+}
+
+func TestHandleSeataServerValidation_NilRequest(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = seatav1.AddToScheme(scheme)
+	
+	codecs := serializer.NewCodecFactory(scheme)
+	decoder := codecs.UniversalDeserializer()
+
+	handler := NewValidatingWebhookHandler(decoder)
+
+	admissionReview := admissionv1.AdmissionReview{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "admission.k8s.io/v1",
+			Kind:       "AdmissionReview",
+		},
+		Request: nil,
+	}
+
+	body, _ := json.Marshal(admissionReview)
+	req := httptest.NewRequest(http.MethodPost, "/validate", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+
+	handler.HandleSeataServerValidation(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", w.Code)
 	}
 }
 

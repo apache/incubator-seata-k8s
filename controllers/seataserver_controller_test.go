@@ -614,6 +614,232 @@ func TestSeataServerReconciler_RecordError(t *testing.T) {
 	}
 }
 
+func TestSeataServerReconciler_RecordError_MaxErrors(t *testing.T) {
+	scheme := createTestScheme()
+
+	// Create a SeataServer with maximum errors
+	errors := make([]seatav1alpha1.SeataServerError, MaxRecentErrorRecords)
+	for i := 0; i < MaxRecentErrorRecords; i++ {
+		errors[i] = seatav1alpha1.SeataServerError{
+			Type:      "test-error",
+			Message:   "old error",
+			Timestamp: metav1.Now(),
+		}
+	}
+
+	seataServer := &seatav1alpha1.SeataServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-seata",
+			Namespace: "default",
+		},
+		Status: seatav1alpha1.SeataServerStatus{
+			Errors: errors,
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(seataServer).
+		WithStatusSubresource(seataServer).
+		Build()
+
+	reconciler := &SeataServerReconciler{
+		Client: fakeClient,
+		Scheme: scheme,
+		Log:    logr.Discard(),
+	}
+
+	err := reconciler.recordError(
+		context.Background(),
+		types.NamespacedName{Name: "test-seata", Namespace: "default"},
+		seatav1alpha1.ErrorTypeK8s_SeataServer,
+		"New error message",
+		reconcile.TerminalError(nil),
+	)
+
+	if err != nil {
+		t.Errorf("recordError failed: %v", err)
+	}
+}
+
+func TestSeataServerReconciler_ReconcileClientObject_CreateSuccess(t *testing.T) {
+	scheme := createTestScheme()
+
+	seataServer := &seatav1alpha1.SeataServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-seata",
+			Namespace: "default",
+		},
+		Spec: seatav1alpha1.SeataServerSpec{
+			ServiceName: "test-svc",
+			Ports: seatav1alpha1.Ports{
+				ServicePort: 8091,
+				ConsolePort: 7091,
+				RaftPort:    9091,
+			},
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(seataServer).
+		Build()
+
+	reconciler := &SeataServerReconciler{
+		Client: fakeClient,
+		Scheme: scheme,
+		Log:    logr.Discard(),
+	}
+
+	svc := &apiv1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-svc",
+			Namespace: "default",
+		},
+		Spec: apiv1.ServiceSpec{
+			Ports: []apiv1.ServicePort{
+				{Name: "service-port", Port: 8091},
+			},
+		},
+	}
+
+	err := reconciler.reconcileClientObject(
+		context.Background(),
+		seataServer,
+		svc,
+		func() client.Object { return &apiv1.Service{} },
+		func(found, desired client.Object) {},
+		seatav1alpha1.ErrorTypeK8s_HeadlessService,
+		"Service",
+	)
+
+	if err != nil {
+		t.Errorf("reconcileClientObject create failed: %v", err)
+	}
+}
+
+func TestSeataServerReconciler_ReconcileClientObject_UpdateSuccess(t *testing.T) {
+	scheme := createTestScheme()
+
+	seataServer := &seatav1alpha1.SeataServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-seata",
+			Namespace: "default",
+			UID:       types.UID("test-uid"),
+		},
+		Spec: seatav1alpha1.SeataServerSpec{
+			ServiceName: "test-svc",
+			Ports: seatav1alpha1.Ports{
+				ServicePort: 8091,
+				ConsolePort: 7091,
+				RaftPort:    9091,
+			},
+		},
+	}
+
+	existingSvc := &apiv1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-svc",
+			Namespace: "default",
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: "operator.seata.apache.org/v1alpha1",
+					Kind:       "SeataServer",
+					Name:       "test-seata",
+					UID:        "test-uid",
+				},
+			},
+		},
+		Spec: apiv1.ServiceSpec{
+			Ports: []apiv1.ServicePort{
+				{Name: "old-port", Port: 8080},
+			},
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(seataServer, existingSvc).
+		Build()
+
+	reconciler := &SeataServerReconciler{
+		Client: fakeClient,
+		Scheme: scheme,
+		Log:    logr.Discard(),
+	}
+
+	newSvc := &apiv1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-svc",
+			Namespace: "default",
+		},
+		Spec: apiv1.ServiceSpec{
+			Ports: []apiv1.ServicePort{
+				{Name: "service-port", Port: 8091},
+			},
+		},
+	}
+
+	err := reconciler.reconcileClientObject(
+		context.Background(),
+		seataServer,
+		newSvc,
+		func() client.Object { return &apiv1.Service{} },
+		func(found, desired client.Object) {
+			found.(*apiv1.Service).Spec.Ports = desired.(*apiv1.Service).Spec.Ports
+		},
+		seatav1alpha1.ErrorTypeK8s_HeadlessService,
+		"Service",
+	)
+
+	if err != nil {
+		t.Errorf("reconcileClientObject update failed: %v", err)
+	}
+}
+
+func TestSeataServerReconciler_Reconcile_WithDefaults(t *testing.T) {
+	scheme := createTestScheme()
+
+	seataServer := &seatav1alpha1.SeataServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-seata",
+			Namespace: "default",
+		},
+		Spec: seatav1alpha1.SeataServerSpec{
+			// Empty spec to trigger WithDefaults
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(seataServer).
+		WithStatusSubresource(seataServer).
+		Build()
+
+	reconciler := &SeataServerReconciler{
+		Client: fakeClient,
+		Scheme: scheme,
+		Log:    logr.Discard(),
+	}
+
+	req := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "test-seata",
+			Namespace: "default",
+		},
+	}
+
+	result, err := reconciler.Reconcile(context.Background(), req)
+	if err != nil {
+		t.Errorf("Reconcile with defaults failed: %v", err)
+	}
+
+	// Should requeue after applying defaults
+	if !result.Requeue {
+		t.Error("Expected requeue after applying defaults")
+	}
+}
+
 func TestSeataServerReconciler_ReconcileClientObject(t *testing.T) {
 	scheme := createTestScheme()
 

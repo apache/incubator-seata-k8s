@@ -222,6 +222,153 @@ func TestCleanupAllPVCs(t *testing.T) {
 	}
 }
 
+func TestCleanupAllPVCs_EmptyList(t *testing.T) {
+	scheme := createCleanupTestScheme()
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		Build()
+
+	handler := NewCleanupHandler(fakeClient, logr.Discard())
+
+	err := handler.cleanupAllPVCs(context.Background(), "test-seata", "default", types.UID("test-uid-123"))
+	if err != nil {
+		t.Errorf("cleanupAllPVCs with empty list failed: %v", err)
+	}
+}
+
+func TestHandleCleanupV1_ErrorInPVCCleanup(t *testing.T) {
+	scheme := createCleanupTestScheme()
+
+	seataServer := &seatav1.SeataServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-seata",
+			Namespace: "default",
+			UID:       types.UID("test-uid-123"),
+		},
+		Spec: seatav1.SeataServerSpec{
+			Persistence: seatav1.Persistence{
+				VolumeReclaimPolicy: seatav1.VolumeReclaimPolicyDelete,
+			},
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(seataServer).
+		Build()
+
+	handler := NewCleanupHandler(fakeClient, logr.Discard())
+
+	// Test cleanup with non-existent PVCs (should not error)
+	err := handler.handleCleanupV1(context.Background(), seataServer)
+	if err != nil {
+		t.Errorf("handleCleanupV1 failed: %v", err)
+	}
+}
+
+func TestCleanupConfigMaps_EmptyList(t *testing.T) {
+	scheme := createCleanupTestScheme()
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		Build()
+
+	handler := NewCleanupHandler(fakeClient, logr.Discard())
+
+	err := handler.cleanupConfigMaps(context.Background(), "test-seata", "default")
+	if err != nil {
+		t.Errorf("cleanupConfigMaps with empty list failed: %v", err)
+	}
+}
+
+func TestCleanupSecrets_EmptyList(t *testing.T) {
+	scheme := createCleanupTestScheme()
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		Build()
+
+	handler := NewCleanupHandler(fakeClient, logr.Discard())
+
+	err := handler.cleanupSecrets(context.Background(), "test-seata", "default")
+	if err != nil {
+		t.Errorf("cleanupSecrets with empty list failed: %v", err)
+	}
+}
+
+func TestDeletePVC_AlreadyDeleted(t *testing.T) {
+	scheme := createCleanupTestScheme()
+
+	pvc := &apiv1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-pvc",
+			Namespace: "default",
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		Build()
+
+	handler := NewCleanupHandler(fakeClient, logr.Discard())
+
+	// Try to delete non-existent PVC (should not error due to IsNotFound check)
+	err := handler.deletePVC(context.Background(), pvc)
+	if err != nil {
+		t.Errorf("deletePVC for non-existent PVC failed: %v", err)
+	}
+}
+
+func TestHandleCleanupV1Alpha1_WithConfigMapsAndSecrets(t *testing.T) {
+	scheme := createCleanupTestScheme()
+
+	seataServer := &seatav1alpha1.SeataServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-seata",
+			Namespace: "default",
+			UID:       types.UID("test-uid-123"),
+		},
+		Spec: seatav1alpha1.SeataServerSpec{
+			Persistence: seatav1alpha1.Persistence{
+				VolumeReclaimPolicy: seatav1alpha1.VolumeReclaimPolicyDelete,
+			},
+		},
+	}
+
+	cm := &apiv1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-cm",
+			Namespace: "default",
+			Labels: map[string]string{
+				"app": "test-seata",
+			},
+		},
+	}
+
+	secret := &apiv1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-secret",
+			Namespace: "default",
+			Labels: map[string]string{
+				"app": "test-seata",
+			},
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(seataServer, cm, secret).
+		Build()
+
+	handler := NewCleanupHandler(fakeClient, logr.Discard())
+
+	err := handler.handleCleanupV1Alpha1(context.Background(), seataServer)
+	if err != nil {
+		t.Errorf("handleCleanupV1Alpha1 failed: %v", err)
+	}
+}
+
 func TestGetPVCList(t *testing.T) {
 	scheme := createCleanupTestScheme()
 
