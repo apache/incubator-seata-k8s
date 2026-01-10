@@ -19,15 +19,32 @@ package finalizer
 
 import (
 	"context"
+	"testing"
+	"time"
+
 	seatav1 "github.com/apache/seata-k8s/api/v1"
+	seatav1alpha1 "github.com/apache/seata-k8s/api/v1alpha1"
 	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-	"testing"
-	"time"
 )
+
+func TestNewFinalizerManager(t *testing.T) {
+	scheme := createTestScheme()
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	logger := logr.Discard()
+
+	fm := NewFinalizerManager(fakeClient, logger)
+
+	if fm == nil {
+		t.Fatal("NewFinalizerManager should not return nil")
+	}
+	if fm.Client == nil {
+		t.Error("FinalizerManager.Client should not be nil")
+	}
+}
 
 func TestFinalizerManager_AddFinalizer(t *testing.T) {
 	testCases := []struct {
@@ -285,10 +302,35 @@ func TestFinalizerManager_IsBeingDeleted(t *testing.T) {
 }
 
 func TestFinalizerManager_GetNamespacedName(t *testing.T) {
-	seataServer := &seatav1.SeataServer{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-seata",
-			Namespace: "default",
+	testCases := []struct {
+		name        string
+		server      interface{}
+		expected    types.NamespacedName
+	}{
+		{
+			name: "v1 SeataServer",
+			server: &seatav1.SeataServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-seata",
+					Namespace: "default",
+				},
+			},
+			expected: types.NamespacedName{Name: "test-seata", Namespace: "default"},
+		},
+		{
+			name: "v1alpha1 SeataServer",
+			server: &seatav1alpha1.SeataServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-alpha",
+					Namespace: "test-ns",
+				},
+			},
+			expected: types.NamespacedName{Name: "test-alpha", Namespace: "test-ns"},
+		},
+		{
+			name:     "unsupported type",
+			server:   "invalid",
+			expected: types.NamespacedName{},
 		},
 	}
 
@@ -297,11 +339,190 @@ func TestFinalizerManager_GetNamespacedName(t *testing.T) {
 		Log:    logr.Discard(),
 	}
 
-	result := fm.GetNamespacedName(seataServer)
-	expected := types.NamespacedName{Name: "test-seata", Namespace: "default"}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := fm.GetNamespacedName(tc.server)
+			if result != tc.expected {
+				t.Errorf("expected %v, got %v", tc.expected, result)
+			}
+		})
+	}
+}
 
-	if result != expected {
-		t.Errorf("expected %v, got %v", expected, result)
+func TestFinalizerManager_GetDeletionTimestamp(t *testing.T) {
+	now := metav1.Now()
+
+	testCases := []struct {
+		name     string
+		server   interface{}
+		expected interface{}
+	}{
+		{
+			name: "v1 SeataServer with deletion timestamp",
+			server: &seatav1.SeataServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "test-seata",
+					Namespace:         "default",
+					DeletionTimestamp: &now,
+				},
+			},
+			expected: &now,
+		},
+		{
+			name: "v1alpha1 SeataServer with deletion timestamp",
+			server: &seatav1alpha1.SeataServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "test-alpha",
+					Namespace:         "default",
+					DeletionTimestamp: &now,
+				},
+			},
+			expected: &now,
+		},
+		{
+			name:     "unsupported type",
+			server:   "invalid",
+			expected: nil,
+		},
+	}
+
+	fm := &FinalizerManager{
+		Client: nil,
+		Log:    logr.Discard(),
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := fm.GetDeletionTimestamp(tc.server)
+			if result != tc.expected {
+				t.Errorf("expected %v, got %v", tc.expected, result)
+			}
+		})
+	}
+}
+
+func TestFinalizerManager_AddFinalizer_V1Alpha1(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = seatav1.AddToScheme(scheme)
+	_ = seatav1alpha1.AddToScheme(scheme)
+
+	seataServer := &seatav1alpha1.SeataServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "test-seata-alpha",
+			Namespace:  "default",
+			Finalizers: []string{},
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(seataServer).
+		Build()
+
+	fm := &FinalizerManager{
+		Client: fakeClient,
+		Log:    logr.Discard(),
+	}
+
+	ctx := context.Background()
+	err := fm.AddFinalizer(ctx, seataServer, SeataFinalizerName)
+
+	if err != nil {
+		t.Errorf("AddFinalizer for v1alpha1 failed: %v", err)
+	}
+
+	if !fm.HasFinalizer(seataServer, SeataFinalizerName) {
+		t.Errorf("finalizer %s not found after adding", SeataFinalizerName)
+	}
+}
+
+func TestFinalizerManager_RemoveFinalizer_V1Alpha1(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = seatav1.AddToScheme(scheme)
+	_ = seatav1alpha1.AddToScheme(scheme)
+
+	seataServer := &seatav1alpha1.SeataServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "test-seata-alpha",
+			Namespace:  "default",
+			Finalizers: []string{SeataFinalizerName, "other-finalizer"},
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(seataServer).
+		Build()
+
+	fm := &FinalizerManager{
+		Client: fakeClient,
+		Log:    logr.Discard(),
+	}
+
+	ctx := context.Background()
+	err := fm.RemoveFinalizer(ctx, seataServer, SeataFinalizerName)
+
+	if err != nil {
+		t.Errorf("RemoveFinalizer for v1alpha1 failed: %v", err)
+	}
+
+	hasFinalizer := fm.HasFinalizer(seataServer, SeataFinalizerName)
+	if hasFinalizer {
+		t.Errorf("expected finalizer to be removed")
+	}
+}
+
+func TestFinalizerManager_AddFinalizer_UnsupportedType(t *testing.T) {
+	scheme := createTestScheme()
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	fm := &FinalizerManager{
+		Client: fakeClient,
+		Log:    logr.Discard(),
+	}
+
+	err := fm.AddFinalizer(context.Background(), "invalid-type", SeataFinalizerName)
+	if err == nil {
+		t.Error("Expected error for unsupported type, got nil")
+	}
+}
+
+func TestFinalizerManager_RemoveFinalizer_UnsupportedType(t *testing.T) {
+	scheme := createTestScheme()
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	fm := &FinalizerManager{
+		Client: fakeClient,
+		Log:    logr.Discard(),
+	}
+
+	err := fm.RemoveFinalizer(context.Background(), "invalid-type", SeataFinalizerName)
+	if err == nil {
+		t.Error("Expected error for unsupported type, got nil")
+	}
+}
+
+func TestFinalizerManager_HasFinalizer_UnsupportedType(t *testing.T) {
+	fm := &FinalizerManager{
+		Client: nil,
+		Log:    logr.Discard(),
+	}
+
+	result := fm.HasFinalizer("invalid-type", SeataFinalizerName)
+	if result {
+		t.Error("Expected false for unsupported type")
+	}
+}
+
+func TestFinalizerManager_IsBeingDeleted_UnsupportedType(t *testing.T) {
+	fm := &FinalizerManager{
+		Client: nil,
+		Log:    logr.Discard(),
+	}
+
+	result := fm.IsBeingDeleted("invalid-type")
+	if result {
+		t.Error("Expected false for unsupported type")
 	}
 }
 

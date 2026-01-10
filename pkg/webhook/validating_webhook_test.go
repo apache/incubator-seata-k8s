@@ -344,11 +344,55 @@ func TestValidateEnvironmentVariables(t *testing.T) {
 			},
 			valid: false,
 		},
+		{
+			name: "invalid too long name",
+			envs: []apiv1.EnvVar{
+				{Name: "VAR_" + string(make([]byte, 250)), Value: "value"},
+			},
+			valid: false,
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			err := validateEnvironmentVariables(tc.envs)
+			if (err == nil) != tc.valid {
+				t.Errorf("expected valid=%v, got error=%v", tc.valid, err)
+			}
+		})
+	}
+}
+
+func TestValidateResourceQuantity(t *testing.T) {
+	testCases := []struct {
+		name         string
+		resourceName string
+		quantity     resource.Quantity
+		valid        bool
+	}{
+		{
+			name:         "valid positive quantity",
+			resourceName: "cpu",
+			quantity:     resource.MustParse("100m"),
+			valid:        true,
+		},
+		{
+			name:         "valid zero quantity",
+			resourceName: "memory",
+			quantity:     resource.MustParse("0"),
+			valid:        true,
+		},
+		{
+			name:         "invalid negative quantity",
+			resourceName: "cpu",
+			quantity:     resource.MustParse("-100m"),
+			valid:        false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateResourceQuantity(tc.resourceName, tc.quantity)
 			if (err == nil) != tc.valid {
 				t.Errorf("expected valid=%v, got error=%v", tc.valid, err)
 			}
@@ -411,6 +455,11 @@ func TestValidateSeataServer(t *testing.T) {
 			},
 			valid: false,
 		},
+		{
+			name:   "nil SeataServer",
+			server: nil,
+			valid:  false,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -418,6 +467,67 @@ func TestValidateSeataServer(t *testing.T) {
 			errors := ValidateSeataServer(tc.server)
 			if (len(errors) == 0) != tc.valid {
 				t.Errorf("expected valid=%v, got errors=%v", tc.valid, errors)
+			}
+		})
+	}
+}
+
+func TestValidateResourceRequirements(t *testing.T) {
+	testCases := []struct {
+		name         string
+		requirements apiv1.ResourceRequirements
+		valid        bool
+	}{
+		{
+			name: "valid resource requirements",
+			requirements: apiv1.ResourceRequirements{
+				Requests: apiv1.ResourceList{
+					apiv1.ResourceCPU:    resource.MustParse("100m"),
+					apiv1.ResourceMemory: resource.MustParse("128Mi"),
+				},
+				Limits: apiv1.ResourceList{
+					apiv1.ResourceCPU:    resource.MustParse("1000m"),
+					apiv1.ResourceMemory: resource.MustParse("1Gi"),
+				},
+			},
+			valid: true,
+		},
+		{
+			name: "CPU limit less than request",
+			requirements: apiv1.ResourceRequirements{
+				Requests: apiv1.ResourceList{
+					apiv1.ResourceCPU: resource.MustParse("1000m"),
+				},
+				Limits: apiv1.ResourceList{
+					apiv1.ResourceCPU: resource.MustParse("500m"),
+				},
+			},
+			valid: false,
+		},
+		{
+			name: "Memory limit less than request",
+			requirements: apiv1.ResourceRequirements{
+				Requests: apiv1.ResourceList{
+					apiv1.ResourceMemory: resource.MustParse("2Gi"),
+				},
+				Limits: apiv1.ResourceList{
+					apiv1.ResourceMemory: resource.MustParse("1Gi"),
+				},
+			},
+			valid: false,
+		},
+		{
+			name:         "empty resource requirements",
+			requirements: apiv1.ResourceRequirements{},
+			valid:        true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateResourceRequirements(tc.requirements)
+			if (err == nil) != tc.valid {
+				t.Errorf("expected valid=%v, got error=%v", tc.valid, err)
 			}
 		})
 	}

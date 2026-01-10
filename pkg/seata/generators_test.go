@@ -340,3 +340,134 @@ func TestBuildEnvVars_WithMultipleReplicas(t *testing.T) {
 	}
 }
 
+func TestMakeStatefulSet_WithEmptyLabelsAndAnnotations(t *testing.T) {
+	seataServer := &seatav1alpha1.SeataServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-seata",
+			Namespace: "default",
+			UID:       types.UID("test-uid"),
+		},
+		Spec: seatav1alpha1.SeataServerSpec{
+			ContainerSpec: seatav1alpha1.ContainerSpec{
+				ContainerName: "seata",
+				Image:         "seata:latest",
+			},
+			ServiceName: "seata-svc",
+			Replicas:    1,
+			Ports: seatav1alpha1.Ports{
+				ServicePort: 8091,
+				ConsolePort: 7091,
+				RaftPort:    9091,
+			},
+			Persistence: seatav1alpha1.Persistence{
+				PersistentVolumeClaimSpec: apiv1.PersistentVolumeClaimSpec{
+					Resources: apiv1.ResourceRequirements{
+						Requests: apiv1.ResourceList{
+							apiv1.ResourceStorage: resource.MustParse("1Gi"),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	sts := MakeStatefulSet(seataServer)
+
+	if sts == nil {
+		t.Fatal("MakeStatefulSet returned nil")
+	}
+
+	if sts.Name != "test-seata" {
+		t.Errorf("Expected name 'test-seata', got '%s'", sts.Name)
+	}
+}
+
+func TestMakeHeadlessService_WithDifferentPorts(t *testing.T) {
+	seataServer := &seatav1alpha1.SeataServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "custom-seata",
+			Namespace: "custom-ns",
+		},
+		Spec: seatav1alpha1.SeataServerSpec{
+			ServiceName: "custom-service",
+			Ports: seatav1alpha1.Ports{
+				ServicePort: 8888,
+				ConsolePort: 7777,
+				RaftPort:    9999,
+			},
+		},
+	}
+
+	svc := MakeHeadlessService(seataServer)
+
+	if svc.Name != "custom-service" {
+		t.Errorf("Expected service name 'custom-service', got '%s'", svc.Name)
+	}
+
+	if svc.Namespace != "custom-ns" {
+		t.Errorf("Expected namespace 'custom-ns', got '%s'", svc.Namespace)
+	}
+
+	portMap := make(map[string]int32)
+	for _, port := range svc.Spec.Ports {
+		portMap[port.Name] = port.Port
+	}
+
+	if portMap["service-port"] != 8888 {
+		t.Errorf("Expected service-port 8888, got %d", portMap["service-port"])
+	}
+	if portMap["console-port"] != 7777 {
+		t.Errorf("Expected console-port 7777, got %d", portMap["console-port"])
+	}
+	if portMap["raft-port"] != 9999 {
+		t.Errorf("Expected raft-port 9999, got %d", portMap["raft-port"])
+	}
+}
+
+func TestBuildEntrypointScript_WithDifferentServiceName(t *testing.T) {
+	seataServer := &seatav1alpha1.SeataServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-seata",
+			Namespace: "production",
+		},
+		Spec: seatav1alpha1.SeataServerSpec{
+			ServiceName: "my-custom-service",
+		},
+	}
+
+	script := buildEntrypointScript(seataServer)
+
+	if !strings.Contains(script, "my-custom-service") {
+		t.Errorf("Script should contain service name 'my-custom-service', got: %s", script)
+	}
+
+	if !strings.Contains(script, "export SEATA_IP") {
+		t.Error("Script should contain SEATA_IP export")
+	}
+}
+
+func TestBuildEnvVars_EmptyEnv(t *testing.T) {
+	seataServer := &seatav1alpha1.SeataServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-seata",
+			Namespace: "default",
+		},
+		Spec: seatav1alpha1.SeataServerSpec{
+			ContainerSpec: seatav1alpha1.ContainerSpec{
+				Env: []apiv1.EnvVar{},
+			},
+			Ports: seatav1alpha1.Ports{
+				ServicePort: 8091,
+				ConsolePort: 7091,
+				RaftPort:    9091,
+			},
+		},
+	}
+
+	envs := buildEnvVars(seataServer)
+
+	// Should still have base environment variables
+	if len(envs) < 5 {
+		t.Errorf("Expected at least 5 base env vars, got %d", len(envs))
+	}
+}

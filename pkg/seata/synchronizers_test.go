@@ -262,3 +262,110 @@ func TestSyncStatefulSet_WithMultipleContainers(t *testing.T) {
 	}
 }
 
+func TestSyncService_WithSinglePort(t *testing.T) {
+	curr := &apiv1.Service{
+		Spec: apiv1.ServiceSpec{
+			Ports: []apiv1.ServicePort{
+				{Name: "old-port", Port: 8080},
+				{Name: "another-port", Port: 9090},
+			},
+		},
+	}
+
+	next := &apiv1.Service{
+		Spec: apiv1.ServiceSpec{
+			Ports: []apiv1.ServicePort{
+				{Name: "new-port", Port: 8091},
+			},
+		},
+	}
+
+	SyncService(curr, next)
+
+	if len(curr.Spec.Ports) != 1 {
+		t.Errorf("Expected 1 port after sync, got %d", len(curr.Spec.Ports))
+	}
+
+	if curr.Spec.Ports[0].Name != "new-port" {
+		t.Errorf("Expected port name 'new-port', got '%s'", curr.Spec.Ports[0].Name)
+	}
+
+	if curr.Spec.Ports[0].Port != 8091 {
+		t.Errorf("Expected port 8091, got %d", curr.Spec.Ports[0].Port)
+	}
+}
+
+func TestSyncStatefulSet_ReplicasScaleUp(t *testing.T) {
+	replicas1 := int32(1)
+	replicas5 := int32(5)
+
+	curr := &appsv1.StatefulSet{
+		Spec: appsv1.StatefulSetSpec{
+			Replicas: &replicas1,
+			Template: apiv1.PodTemplateSpec{
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{
+						{Name: "app", Image: "app:v1"},
+					},
+				},
+			},
+		},
+	}
+
+	next := &appsv1.StatefulSet{
+		Spec: appsv1.StatefulSetSpec{
+			Replicas: &replicas5,
+			Template: apiv1.PodTemplateSpec{
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{
+						{Name: "app", Image: "app:v1"},
+					},
+				},
+			},
+		},
+	}
+
+	SyncStatefulSet(curr, next)
+
+	if *curr.Spec.Replicas != 5 {
+		t.Errorf("Expected 5 replicas after scale up, got %d", *curr.Spec.Replicas)
+	}
+}
+
+func TestSyncStatefulSet_ReplicasScaleDown(t *testing.T) {
+	replicas5 := int32(5)
+	replicas2 := int32(2)
+
+	curr := &appsv1.StatefulSet{
+		Spec: appsv1.StatefulSetSpec{
+			Replicas: &replicas5,
+			Template: apiv1.PodTemplateSpec{
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{
+						{Name: "app", Image: "app:v1"},
+					},
+				},
+			},
+		},
+	}
+
+	next := &appsv1.StatefulSet{
+		Spec: appsv1.StatefulSetSpec{
+			Replicas: &replicas2,
+			Template: apiv1.PodTemplateSpec{
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{
+						{Name: "app", Image: "app:v1"},
+					},
+				},
+			},
+		},
+	}
+
+	SyncStatefulSet(curr, next)
+
+	if *curr.Spec.Replicas != 2 {
+		t.Errorf("Expected 2 replicas after scale down, got %d", *curr.Spec.Replicas)
+	}
+}
+
