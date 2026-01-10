@@ -32,9 +32,9 @@ func TestFetchEnvVar_DirectValue(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = v1.AddToScheme(scheme)
 	_ = seatav1alpha1.AddToScheme(scheme)
-	
+
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
-	
+
 	cr := &seatav1alpha1.SeataServer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-seata",
@@ -427,3 +427,129 @@ func TestFetchEnvVar_SecretNotFound_Optional(t *testing.T) {
 	}
 }
 
+func TestFetchEnvVar_ConfigMapNotFound_NotOptional(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = v1.AddToScheme(scheme)
+	_ = seatav1alpha1.AddToScheme(scheme)
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		Build()
+
+	cr := &seatav1alpha1.SeataServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-seata",
+			Namespace: "default",
+		},
+	}
+
+	envVar := v1.EnvVar{
+		Name: "TEST_VAR",
+		ValueFrom: &v1.EnvVarSource{
+			ConfigMapKeyRef: &v1.ConfigMapKeySelector{
+				LocalObjectReference: v1.LocalObjectReference{
+					Name: "nonexistent-cm",
+				},
+				Key: "key",
+			},
+		},
+	}
+
+	_, err := FetchEnvVar(context.Background(), fakeClient, cr, envVar)
+	if err == nil {
+		t.Error("Expected error for non-optional missing ConfigMap")
+	}
+}
+
+func TestFetchEnvVar_SecretNotFound_NotOptional(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = v1.AddToScheme(scheme)
+	_ = seatav1alpha1.AddToScheme(scheme)
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		Build()
+
+	cr := &seatav1alpha1.SeataServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-seata",
+			Namespace: "default",
+		},
+	}
+
+	envVar := v1.EnvVar{
+		Name: "TEST_VAR",
+		ValueFrom: &v1.EnvVarSource{
+			SecretKeyRef: &v1.SecretKeySelector{
+				LocalObjectReference: v1.LocalObjectReference{
+					Name: "nonexistent-secret",
+				},
+				Key: "key",
+			},
+		},
+	}
+
+	_, err := FetchEnvVar(context.Background(), fakeClient, cr, envVar)
+	if err == nil {
+		t.Error("Expected error for non-optional missing Secret")
+	}
+}
+
+func TestFetchEnvVar_EmptyValue(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = v1.AddToScheme(scheme)
+	_ = seatav1alpha1.AddToScheme(scheme)
+
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	cr := &seatav1alpha1.SeataServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-seata",
+			Namespace: "default",
+		},
+	}
+
+	envVar := v1.EnvVar{
+		Name:  "TEST_VAR",
+		Value: "",
+	}
+
+	result, err := FetchEnvVar(context.Background(), fakeClient, cr, envVar)
+	if err != nil {
+		t.Errorf("FetchEnvVar failed: %v", err)
+	}
+
+	if result != "" {
+		t.Errorf("Expected empty string, got '%s'", result)
+	}
+}
+
+func TestFetchEnvVar_NoValueFrom(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = v1.AddToScheme(scheme)
+	_ = seatav1alpha1.AddToScheme(scheme)
+
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	cr := &seatav1alpha1.SeataServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-seata",
+			Namespace: "default",
+		},
+	}
+
+	envVar := v1.EnvVar{
+		Name:      "TEST_VAR",
+		Value:     "direct-value",
+		ValueFrom: nil,
+	}
+
+	result, err := FetchEnvVar(context.Background(), fakeClient, cr, envVar)
+	if err != nil {
+		t.Errorf("FetchEnvVar failed: %v", err)
+	}
+
+	if result != "direct-value" {
+		t.Errorf("Expected 'direct-value', got '%s'", result)
+	}
+}
