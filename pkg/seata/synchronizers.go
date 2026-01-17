@@ -21,11 +21,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"time"
 
 	seatav1alpha1 "github.com/apache/seata-k8s/api/v1alpha1"
 	"github.com/apache/seata-k8s/pkg/utils"
@@ -33,6 +33,13 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+)
+
+const (
+	// HTTP client timeout
+	httpClientTimeout = 30 * time.Second
+	// HTTP request timeout
+	httpRequestTimeout = 10 * time.Second
 )
 
 func SyncService(curr *apiv1.Service, next *apiv1.Service) {
@@ -52,62 +59,88 @@ type rspData struct {
 }
 
 func changeCluster(s *seatav1alpha1.SeataServer, i int32, username string, password string) error {
-	client := http.Client{}
+	// Create HTTP client with timeout
+	client := &http.Client{
+		Timeout: httpClientTimeout,
+	}
 	host := fmt.Sprintf("%s-%d.%s.%s.svc.cluster.local:%d", s.Name, i, s.Spec.ServiceName, s.Namespace, s.Spec.Ports.ConsolePort)
 
+	// Step 1: Login to get token
 	values := map[string]string{"username": username, "password": password}
-	jsonValue, _ := json.Marshal(values)
-	loginUrl := fmt.Sprintf("http://%s/api/v1/auth/login", host)
-	rsp, err := client.Post(loginUrl, "application/json", bytes.NewBuffer(jsonValue))
+	jsonValue, err := json.Marshal(values)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal login credentials: %w", err)
+	}
+
+	loginURL := fmt.Sprintf("http://%s/api/v1/auth/login", host)
+	ctx, cancel := context.WithTimeout(context.Background(), httpRequestTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", loginURL, bytes.NewBuffer(jsonValue))
+	if err != nil {
+		return fmt.Errorf("failed to create login request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	rsp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send login request to %s: %w", host, err)
 	}
 	defer rsp.Body.Close()
 
-	d := &rspData{}
-	var tokenStr string
 	if rsp.StatusCode != http.StatusOK {
-		return errors.New("login failed")
+		return fmt.Errorf("login failed with status code %d for host %s", rsp.StatusCode, host)
 	}
 
 	body, err := io.ReadAll(rsp.Body)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read login response: %w", err)
 	}
-	if err = json.Unmarshal(body, &d); err != nil {
-		return err
-	}
-	if !d.Success {
-		return errors.New(d.Message)
-	}
-	tokenStr = d.Data
 
-	targetUrl := fmt.Sprintf("http://%s/metadata/v1/changeCluster?raftClusterStr=%s",
+	loginData := &rspData{}
+	if err = json.Unmarshal(body, loginData); err != nil {
+		return fmt.Errorf("failed to unmarshal login response: %w", err)
+	}
+	if !loginData.Success {
+		return fmt.Errorf("login failed: %s", loginData.Message)
+	}
+	tokenStr := loginData.Data
+
+	// Step 2: Call changeCluster API
+	targetURL := fmt.Sprintf("http://%s/metadata/v1/changeCluster?raftClusterStr=%s",
 		host, url.QueryEscape(utils.ConcatRaftServerAddress(s)))
-	req, _ := http.NewRequest("POST", targetUrl, nil)
+
+	ctx, cancel = context.WithTimeout(context.Background(), httpRequestTimeout)
+	defer cancel()
+
+	req, err = http.NewRequestWithContext(ctx, "POST", targetURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create changeCluster request: %w", err)
+	}
 	req.Header.Set("Authorization", tokenStr)
+
 	rsp, err = client.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to send changeCluster request to %s: %w", host, err)
 	}
 	defer rsp.Body.Close()
 
-	d = &rspData{}
 	if rsp.StatusCode != http.StatusOK {
-		return errors.New("failed to changeCluster")
+		return fmt.Errorf("changeCluster failed with status code %d for host %s", rsp.StatusCode, host)
 	}
 
 	body, err = io.ReadAll(rsp.Body)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read changeCluster response: %w", err)
 	}
 
-	if err = json.Unmarshal(body, &d); err != nil {
-		return err
+	clusterData := &rspData{}
+	if err = json.Unmarshal(body, clusterData); err != nil {
+		return fmt.Errorf("failed to unmarshal changeCluster response: %w", err)
 	}
 
-	if !d.Success {
-		return errors.New(d.Message)
+	if !clusterData.Success {
+		return fmt.Errorf("changeCluster failed: %s", clusterData.Message)
 	}
 	return nil
 }

@@ -33,6 +33,11 @@ ignore:
   - "**/*_test.go"
   - "**/zz_generated*.go"
   - "hack"
+  - "vendor"
+  - "**/*.yaml"
+  - "**/*.yml"
+  - "**/*.md"
+  - "**/*.json"
 
 fixes:
   - "::gocov"
