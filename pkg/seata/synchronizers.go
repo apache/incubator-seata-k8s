@@ -21,7 +21,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -52,62 +51,74 @@ type rspData struct {
 }
 
 func changeCluster(s *seatav1alpha1.SeataServer, i int32, username string, password string) error {
-	client := http.Client{}
 	host := fmt.Sprintf("%s-%d.%s.%s.svc.cluster.local:%d", s.Name, i, s.Spec.ServiceName, s.Namespace, s.Spec.Ports.ConsolePort)
+	return changeClusterWithHost(host, s, username, password)
+}
+
+// changeClusterWithHost allows testing with custom host (exported for testing)
+func changeClusterWithHost(host string, s *seatav1alpha1.SeataServer, username string, password string) error {
+	client := http.Client{}
 
 	values := map[string]string{"username": username, "password": password}
-	jsonValue, _ := json.Marshal(values)
+	jsonValue, err := json.Marshal(values)
+	if err != nil {
+		return fmt.Errorf("failed to marshal credentials: %w", err)
+	}
+
 	loginUrl := fmt.Sprintf("http://%s/api/v1/auth/login", host)
 	rsp, err := client.Post(loginUrl, "application/json", bytes.NewBuffer(jsonValue))
 	if err != nil {
-		return err
+		return fmt.Errorf("login request failed: %w", err)
 	}
 	defer rsp.Body.Close()
 
 	d := &rspData{}
 	var tokenStr string
 	if rsp.StatusCode != http.StatusOK {
-		return errors.New("login failed")
+		return fmt.Errorf("login failed with status %d", rsp.StatusCode)
 	}
 
 	body, err := io.ReadAll(rsp.Body)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read login response: %w", err)
 	}
 	if err = json.Unmarshal(body, &d); err != nil {
-		return err
+		return fmt.Errorf("failed to parse login response: %w", err)
 	}
 	if !d.Success {
-		return errors.New(d.Message)
+		return fmt.Errorf("login failed: %s", d.Message)
 	}
 	tokenStr = d.Data
 
 	targetUrl := fmt.Sprintf("http://%s/metadata/v1/changeCluster?raftClusterStr=%s",
 		host, url.QueryEscape(utils.ConcatRaftServerAddress(s)))
-	req, _ := http.NewRequest("POST", targetUrl, nil)
+	req, err := http.NewRequest("POST", targetUrl, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create changeCluster request: %w", err)
+	}
 	req.Header.Set("Authorization", tokenStr)
 	rsp, err = client.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("changeCluster request failed: %w", err)
 	}
 	defer rsp.Body.Close()
 
 	d = &rspData{}
 	if rsp.StatusCode != http.StatusOK {
-		return errors.New("failed to changeCluster")
+		return fmt.Errorf("changeCluster failed with status %d", rsp.StatusCode)
 	}
 
 	body, err = io.ReadAll(rsp.Body)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read changeCluster response: %w", err)
 	}
 
 	if err = json.Unmarshal(body, &d); err != nil {
-		return err
+		return fmt.Errorf("failed to parse changeCluster response: %w", err)
 	}
 
 	if !d.Success {
-		return errors.New(d.Message)
+		return fmt.Errorf("changeCluster failed: %s", d.Message)
 	}
 	return nil
 }

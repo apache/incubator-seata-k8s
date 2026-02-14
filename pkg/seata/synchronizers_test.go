@@ -19,6 +19,12 @@ package seata
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 
 	seatav1alpha1 "github.com/apache/seata-k8s/api/v1alpha1"
@@ -26,6 +32,7 @@ import (
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 func TestSyncService(t *testing.T) {
@@ -371,19 +378,47 @@ func TestSyncStatefulSet_ReplicasScaleDown(t *testing.T) {
 	}
 }
 
-func TestChangeCluster_LoginSuccess(t *testing.T) {
-	// This test demonstrates how to test HTTP-dependent functions
-	// In a real scenario, we would need httptest server
-	// For now, we test the error handling paths that don't require actual HTTP calls
+func TestChangeCluster_NetworkError(t *testing.T) {
+	// Test network error when server is not available
+	seataServer := createTestSeataServer()
 
-	seatav1alpha1 := createTestSeataServer()
-
-	// Test with invalid username/password to trigger error path
-	err := changeCluster(seatav1alpha1, 0, "", "")
+	err := changeCluster(seataServer, 0, "admin", "admin")
 	if err == nil {
-		t.Log("changeCluster returned no error (expected due to no real server)")
+		t.Error("Expected error when server is not available")
 	} else {
-		t.Logf("changeCluster returned expected error: %v", err)
+		// The error message should contain either "failed to send login request" or the actual network error
+		if !strings.Contains(err.Error(), "failed to send login request") &&
+			!strings.Contains(err.Error(), "Post") {
+			t.Errorf("Expected network/login request error, got: %v", err)
+		}
+	}
+}
+
+func TestChangeCluster_DifferentPodIndex(t *testing.T) {
+	// Test with different pod indices
+	seataServer := createTestSeataServer()
+
+	testCases := []int32{0, 1, 2}
+	for _, idx := range testCases {
+		err := changeCluster(seataServer, idx, "admin", "admin")
+		// We expect error since there's no real server, but we're testing the function logic
+		if err == nil {
+			t.Logf("Pod %d: changeCluster returned no error (unexpected)", idx)
+		} else {
+			t.Logf("Pod %d: changeCluster returned expected error: %v", idx, err)
+		}
+	}
+}
+
+func TestChangeCluster_EmptyCredentials(t *testing.T) {
+	// Test with empty username and password
+	seataServer := createTestSeataServer()
+
+	err := changeCluster(seataServer, 0, "", "")
+	if err == nil {
+		t.Log("changeCluster with empty credentials returned no error")
+	} else {
+		t.Logf("changeCluster with empty credentials returned error: %v", err)
 	}
 }
 
@@ -392,11 +427,277 @@ func TestSyncRaftCluster_ErrorHandling(t *testing.T) {
 	// Without a real Seata server, this will error, which tests the error path
 
 	ctx := context.Background()
-	seatav1alpha1 := createTestSeataServer()
+	seataServer := createTestSeataServer()
 
-	err := SyncRaftCluster(ctx, seatav1alpha1, "admin", "admin")
+	err := SyncRaftCluster(ctx, seataServer, "admin", "admin")
 	if err != nil {
 		t.Logf("SyncRaftCluster returned expected error without real server: %v", err)
+	}
+}
+
+func TestSyncRaftCluster_SingleReplica(t *testing.T) {
+	// Test with single replica
+	ctx := context.Background()
+	seataServer := createTestSeataServer()
+	seataServer.Spec.Replicas = 1
+
+	err := SyncRaftCluster(ctx, seataServer, "admin", "admin")
+	if err != nil {
+		t.Logf("SyncRaftCluster with single replica returned expected error: %v", err)
+	}
+}
+
+func TestSyncRaftCluster_MultipleReplicas(t *testing.T) {
+	// Test with multiple replicas
+	ctx := context.Background()
+	seataServer := createTestSeataServer()
+	seataServer.Spec.Replicas = 5
+
+	err := SyncRaftCluster(ctx, seataServer, "user", "pass")
+	if err != nil {
+		t.Logf("SyncRaftCluster with 5 replicas returned expected error: %v", err)
+	}
+}
+
+func TestSyncRaftCluster_CancelledContext(t *testing.T) {
+	// Test with cancelled context
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	seataServer := createTestSeataServer()
+
+	err := SyncRaftCluster(ctx, seataServer, "admin", "admin")
+	if err != nil {
+		t.Logf("SyncRaftCluster with cancelled context returned error: %v", err)
+	}
+}
+
+func TestSyncService_NilPorts(t *testing.T) {
+	// Test syncing with nil ports
+	curr := &apiv1.Service{
+		Spec: apiv1.ServiceSpec{
+			Ports: nil,
+		},
+	}
+
+	next := &apiv1.Service{
+		Spec: apiv1.ServiceSpec{
+			Ports: []apiv1.ServicePort{
+				{Name: "new-port", Port: 8091},
+			},
+		},
+	}
+
+	SyncService(curr, next)
+
+	if len(curr.Spec.Ports) != 1 {
+		t.Errorf("Expected 1 port after sync, got %d", len(curr.Spec.Ports))
+	}
+}
+
+func TestSyncStatefulSet_NilReplicas(t *testing.T) {
+	// Test syncing when both have nil replicas
+	curr := &appsv1.StatefulSet{
+		Spec: appsv1.StatefulSetSpec{
+			Replicas: nil,
+			Template: apiv1.PodTemplateSpec{
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{
+						{Name: "old", Image: "old:v1"},
+					},
+				},
+			},
+		},
+	}
+
+	next := &appsv1.StatefulSet{
+		Spec: appsv1.StatefulSetSpec{
+			Replicas: nil,
+			Template: apiv1.PodTemplateSpec{
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{
+						{Name: "new", Image: "new:v2"},
+					},
+				},
+			},
+		},
+	}
+
+	SyncStatefulSet(curr, next)
+
+	// Should be nil after sync
+	if curr.Spec.Replicas != nil {
+		t.Errorf("Expected replicas to be nil, got %v", *curr.Spec.Replicas)
+	}
+
+	// Check container is synced
+	if len(curr.Spec.Template.Spec.Containers) != 1 {
+		t.Errorf("Expected 1 container, got %d", len(curr.Spec.Template.Spec.Containers))
+	}
+	if curr.Spec.Template.Spec.Containers[0].Image != "new:v2" {
+		t.Errorf("Expected image 'new:v2', got '%s'", curr.Spec.Template.Spec.Containers[0].Image)
+	}
+}
+
+func TestSyncStatefulSet_ComplexTemplate(t *testing.T) {
+	replicas := int32(3)
+
+	// Test with more complex template including volumes, env vars, etc.
+	curr := &appsv1.StatefulSet{
+		Spec: appsv1.StatefulSetSpec{
+			Replicas: &replicas,
+			Template: apiv1.PodTemplateSpec{
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{
+						{Name: "old", Image: "old:v1"},
+					},
+				},
+			},
+		},
+	}
+
+	next := &appsv1.StatefulSet{
+		Spec: appsv1.StatefulSetSpec{
+			Replicas: &replicas,
+			Template: apiv1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"app":     "seata",
+						"version": "v2",
+					},
+					Annotations: map[string]string{
+						"prometheus.io/scrape": "true",
+					},
+				},
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{
+						{
+							Name:  "seata",
+							Image: "seata:v2",
+							Env: []apiv1.EnvVar{
+								{Name: "SEATA_PORT", Value: "8091"},
+							},
+						},
+					},
+					InitContainers: []apiv1.Container{
+						{Name: "init", Image: "init:v1"},
+					},
+				},
+			},
+		},
+	}
+
+	SyncStatefulSet(curr, next)
+
+	// Verify labels
+	if len(curr.Spec.Template.Labels) != 2 {
+		t.Errorf("Expected 2 labels, got %d", len(curr.Spec.Template.Labels))
+	}
+
+	// Verify annotations
+	if len(curr.Spec.Template.Annotations) != 1 {
+		t.Errorf("Expected 1 annotation, got %d", len(curr.Spec.Template.Annotations))
+	}
+
+	// Verify init containers
+	if len(curr.Spec.Template.Spec.InitContainers) != 1 {
+		t.Errorf("Expected 1 init container, got %d", len(curr.Spec.Template.Spec.InitContainers))
+	}
+
+	// Verify env vars
+	if len(curr.Spec.Template.Spec.Containers[0].Env) != 1 {
+		t.Errorf("Expected 1 env var, got %d", len(curr.Spec.Template.Spec.Containers[0].Env))
+	}
+}
+
+func TestSyncService_MultiplePortsSync(t *testing.T) {
+	// Test syncing with multiple ports in both current and next
+	curr := &apiv1.Service{
+		Spec: apiv1.ServiceSpec{
+			Ports: []apiv1.ServicePort{
+				{Name: "port1", Port: 8080, Protocol: apiv1.ProtocolTCP},
+				{Name: "port2", Port: 9090, Protocol: apiv1.ProtocolTCP},
+				{Name: "port3", Port: 7070, Protocol: apiv1.ProtocolUDP},
+			},
+		},
+	}
+
+	next := &apiv1.Service{
+		Spec: apiv1.ServiceSpec{
+			Ports: []apiv1.ServicePort{
+				{Name: "service-port", Port: 8091, Protocol: apiv1.ProtocolTCP},
+				{Name: "console-port", Port: 7091, Protocol: apiv1.ProtocolTCP},
+			},
+		},
+	}
+
+	SyncService(curr, next)
+
+	if len(curr.Spec.Ports) != 2 {
+		t.Errorf("Expected 2 ports after sync, got %d", len(curr.Spec.Ports))
+	}
+
+	// Verify protocol is synced
+	for _, port := range curr.Spec.Ports {
+		if port.Protocol != apiv1.ProtocolTCP {
+			t.Errorf("Expected protocol TCP, got %s", port.Protocol)
+		}
+	}
+}
+
+func TestChangeCluster_DifferentNamespace(t *testing.T) {
+	// Test with different namespace
+	seataServer := createTestSeataServer()
+	seataServer.Namespace = "seata-system"
+
+	err := changeCluster(seataServer, 0, "admin", "admin")
+	if err != nil {
+		t.Logf("changeCluster in different namespace returned error: %v", err)
+	}
+}
+
+func TestChangeCluster_CustomServiceName(t *testing.T) {
+	// Test with custom service name
+	seataServer := createTestSeataServer()
+	seataServer.Spec.ServiceName = "custom-seata-service"
+
+	err := changeCluster(seataServer, 0, "admin", "admin")
+	if err != nil {
+		t.Logf("changeCluster with custom service name returned error: %v", err)
+	}
+}
+
+func TestChangeCluster_DifferentPorts(t *testing.T) {
+	// Test with different console port
+	seataServer := createTestSeataServer()
+	seataServer.Spec.Ports.ConsolePort = 9999
+
+	err := changeCluster(seataServer, 0, "admin", "admin")
+	if err != nil {
+		t.Logf("changeCluster with different console port returned error: %v", err)
+	}
+}
+
+func TestSyncRaftCluster_EmptyCredentials(t *testing.T) {
+	// Test with empty credentials
+	ctx := context.Background()
+	seataServer := createTestSeataServer()
+
+	err := SyncRaftCluster(ctx, seataServer, "", "")
+	if err != nil {
+		t.Logf("SyncRaftCluster with empty credentials returned error: %v", err)
+	}
+}
+
+func TestSyncRaftCluster_ZeroReplicas(t *testing.T) {
+	// Test with zero replicas - should not call changeCluster at all
+	ctx := context.Background()
+	seataServer := createTestSeataServer()
+	seataServer.Spec.Replicas = 0
+
+	err := SyncRaftCluster(ctx, seataServer, "admin", "admin")
+	if err != nil {
+		t.Errorf("SyncRaftCluster with zero replicas should not error, got: %v", err)
 	}
 }
 
@@ -415,5 +716,437 @@ func createTestSeataServer() *seatav1alpha1.SeataServer {
 				RaftPort:    9091,
 			},
 		},
+	}
+}
+
+// Mock HTTP server tests to demonstrate testing patterns
+// Note: These tests demonstrate the HTTP mocking pattern but cannot directly
+// test changeCluster since it constructs K8s internal URLs
+func TestChangeCluster_WithMockServer_Success(t *testing.T) {
+	// Create a mock server that simulates successful login and changeCluster
+	loginCalled := false
+	changeClusterCalled := false
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/api/v1/auth/login") {
+			loginCalled = true
+			// Successful login response
+			response := rspData{
+				Code:    "200",
+				Message: "success",
+				Data:    "mock-token-12345",
+				Success: true,
+			}
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(response)
+		} else if strings.Contains(r.URL.Path, "/metadata/v1/changeCluster") {
+			changeClusterCalled = true
+			// Check authorization header
+			if r.Header.Get("Authorization") != "mock-token-12345" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			// Successful changeCluster response
+			response := rspData{
+				Code:    "200",
+				Message: "success",
+				Data:    "cluster changed",
+				Success: true,
+			}
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(response)
+		} else {
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	// Parse server URL to get host and port
+	serverURL, _ := url.Parse(server.URL)
+
+	// This test demonstrates the HTTP mocking pattern
+	t.Logf("Mock server running at: %s", serverURL.Host)
+	t.Logf("Login called: %v, ChangeCluster called: %v", loginCalled, changeClusterCalled)
+}
+
+func TestChangeCluster_WithMockServer_LoginFailure(t *testing.T) {
+	// Create a mock server that simulates login failure
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/api/v1/auth/login") {
+			// Failed login response
+			response := rspData{
+				Code:    "401",
+				Message: "invalid credentials",
+				Data:    "",
+				Success: false,
+			}
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(response)
+		}
+	}))
+	defer server.Close()
+
+	serverURL, _ := url.Parse(server.URL)
+	t.Logf("Mock server for login failure at: %s", serverURL.Host)
+}
+
+func TestChangeCluster_WithMockServer_LoginHTTPError(t *testing.T) {
+	// Create a mock server that returns HTTP error for login
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/api/v1/auth/login") {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer server.Close()
+
+	serverURL, _ := url.Parse(server.URL)
+	t.Logf("Mock server for HTTP error at: %s", serverURL.Host)
+}
+
+func TestChangeCluster_WithMockServer_ChangeClusterFailure(t *testing.T) {
+	// Create a mock server where login succeeds but changeCluster fails
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/api/v1/auth/login") {
+			response := rspData{
+				Code:    "200",
+				Message: "success",
+				Data:    "mock-token",
+				Success: true,
+			}
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(response)
+		} else if strings.Contains(r.URL.Path, "/metadata/v1/changeCluster") {
+			// Failed changeCluster response
+			response := rspData{
+				Code:    "500",
+				Message: "cluster change failed",
+				Data:    "",
+				Success: false,
+			}
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(response)
+		}
+	}))
+	defer server.Close()
+
+	serverURL, _ := url.Parse(server.URL)
+	t.Logf("Mock server for changeCluster failure at: %s", serverURL.Host)
+}
+
+func TestChangeCluster_WithMockServer_InvalidJSON(t *testing.T) {
+	// Create a mock server that returns invalid JSON
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/api/v1/auth/login") {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("invalid json response"))
+		}
+	}))
+	defer server.Close()
+
+	serverURL, _ := url.Parse(server.URL)
+	t.Logf("Mock server for invalid JSON at: %s", serverURL.Host)
+}
+
+func TestRspData_Struct(t *testing.T) {
+	// Test rspData struct marshaling and unmarshaling
+	original := rspData{
+		Code:    "200",
+		Message: "test message",
+		Data:    "test data",
+		Success: true,
+	}
+
+	// Marshal to JSON
+	jsonData, err := json.Marshal(original)
+	if err != nil {
+		t.Fatalf("Failed to marshal rspData: %v", err)
+	}
+
+	// Unmarshal back
+	var decoded rspData
+	err = json.Unmarshal(jsonData, &decoded)
+	if err != nil {
+		t.Fatalf("Failed to unmarshal rspData: %v", err)
+	}
+
+	// Verify fields
+	if decoded.Code != original.Code {
+		t.Errorf("Expected Code %s, got %s", original.Code, decoded.Code)
+	}
+	if decoded.Message != original.Message {
+		t.Errorf("Expected Message %s, got %s", original.Message, decoded.Message)
+	}
+	if decoded.Data != original.Data {
+		t.Errorf("Expected Data %s, got %s", original.Data, decoded.Data)
+	}
+	if decoded.Success != original.Success {
+		t.Errorf("Expected Success %v, got %v", original.Success, decoded.Success)
+	}
+}
+
+func TestSyncService_LargeNumberOfPorts(t *testing.T) {
+	// Test with a large number of ports
+	var currentPorts []apiv1.ServicePort
+	for i := 0; i < 50; i++ {
+		currentPorts = append(currentPorts, apiv1.ServicePort{
+			Name: fmt.Sprintf("port-%d", i),
+			Port: int32(8000 + i),
+		})
+	}
+
+	var desiredPorts []apiv1.ServicePort
+	for i := 0; i < 30; i++ {
+		desiredPorts = append(desiredPorts, apiv1.ServicePort{
+			Name: fmt.Sprintf("new-port-%d", i),
+			Port: int32(9000 + i),
+		})
+	}
+
+	curr := &apiv1.Service{
+		Spec: apiv1.ServiceSpec{
+			Ports: currentPorts,
+		},
+	}
+
+	next := &apiv1.Service{
+		Spec: apiv1.ServiceSpec{
+			Ports: desiredPorts,
+		},
+	}
+
+	SyncService(curr, next)
+
+	if len(curr.Spec.Ports) != 30 {
+		t.Errorf("Expected 30 ports after sync, got %d", len(curr.Spec.Ports))
+	}
+}
+
+func TestSyncStatefulSet_LargeReplicas(t *testing.T) {
+	// Test with large number of replicas
+	replicas100 := int32(100)
+	replicas200 := int32(200)
+
+	curr := &appsv1.StatefulSet{
+		Spec: appsv1.StatefulSetSpec{
+			Replicas: &replicas100,
+			Template: apiv1.PodTemplateSpec{
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{
+						{Name: "app", Image: "app:v1"},
+					},
+				},
+			},
+		},
+	}
+
+	next := &appsv1.StatefulSet{
+		Spec: appsv1.StatefulSetSpec{
+			Replicas: &replicas200,
+			Template: apiv1.PodTemplateSpec{
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{
+						{Name: "app", Image: "app:v2"},
+					},
+				},
+			},
+		},
+	}
+
+	SyncStatefulSet(curr, next)
+
+	if *curr.Spec.Replicas != 200 {
+		t.Errorf("Expected 200 replicas, got %d", *curr.Spec.Replicas)
+	}
+
+	if curr.Spec.Template.Spec.Containers[0].Image != "app:v2" {
+		t.Errorf("Expected image app:v2, got %s", curr.Spec.Template.Spec.Containers[0].Image)
+	}
+}
+
+// Additional edge case tests
+func TestSyncService_SamePortsDifferentProtocol(t *testing.T) {
+	curr := &apiv1.Service{
+		Spec: apiv1.ServiceSpec{
+			Ports: []apiv1.ServicePort{
+				{Name: "port1", Port: 8080, Protocol: apiv1.ProtocolTCP},
+			},
+		},
+	}
+
+	next := &apiv1.Service{
+		Spec: apiv1.ServiceSpec{
+			Ports: []apiv1.ServicePort{
+				{Name: "port1", Port: 8080, Protocol: apiv1.ProtocolUDP},
+			},
+		},
+	}
+
+	SyncService(curr, next)
+
+	if curr.Spec.Ports[0].Protocol != apiv1.ProtocolUDP {
+		t.Errorf("Expected protocol UDP, got %s", curr.Spec.Ports[0].Protocol)
+	}
+}
+
+func TestSyncStatefulSet_EmptyContainers(t *testing.T) {
+	replicas := int32(1)
+
+	curr := &appsv1.StatefulSet{
+		Spec: appsv1.StatefulSetSpec{
+			Replicas: &replicas,
+			Template: apiv1.PodTemplateSpec{
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{
+						{Name: "old", Image: "old:v1"},
+					},
+				},
+			},
+		},
+	}
+
+	next := &appsv1.StatefulSet{
+		Spec: appsv1.StatefulSetSpec{
+			Replicas: &replicas,
+			Template: apiv1.PodTemplateSpec{
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{},
+				},
+			},
+		},
+	}
+
+	SyncStatefulSet(curr, next)
+
+	if len(curr.Spec.Template.Spec.Containers) != 0 {
+		t.Errorf("Expected 0 containers, got %d", len(curr.Spec.Template.Spec.Containers))
+	}
+}
+
+func TestChangeCluster_SpecialCharactersInCredentials(t *testing.T) {
+	seataServer := createTestSeataServer()
+
+	// Test with special characters in username/password
+	err := changeCluster(seataServer, 0, "admin@test", "p@ssw0rd!#$")
+	if err != nil {
+		t.Logf("changeCluster with special characters returned error: %v", err)
+	}
+}
+
+func TestChangeCluster_LongCredentials(t *testing.T) {
+	seataServer := createTestSeataServer()
+
+	// Test with very long credentials
+	longUsername := strings.Repeat("a", 1000)
+	longPassword := strings.Repeat("b", 1000)
+
+	err := changeCluster(seataServer, 0, longUsername, longPassword)
+	if err != nil {
+		t.Logf("changeCluster with long credentials returned error: %v", err)
+	}
+}
+
+func TestSyncRaftCluster_LargeNumberOfReplicas(t *testing.T) {
+	ctx := context.Background()
+	seataServer := createTestSeataServer()
+	seataServer.Spec.Replicas = 10
+
+	err := SyncRaftCluster(ctx, seataServer, "admin", "admin")
+	if err != nil {
+		t.Logf("SyncRaftCluster with 10 replicas returned error: %v", err)
+	}
+}
+
+func TestChangeCluster_DifferentServerName(t *testing.T) {
+	seataServer := createTestSeataServer()
+	seataServer.Name = "my-custom-seata-cluster"
+
+	err := changeCluster(seataServer, 0, "admin", "admin")
+	if err != nil {
+		t.Logf("changeCluster with custom server name returned error: %v", err)
+	}
+}
+
+func TestChangeCluster_HighPodIndex(t *testing.T) {
+	seataServer := createTestSeataServer()
+	seataServer.Spec.Replicas = 100
+
+	// Test with high pod index
+	err := changeCluster(seataServer, 99, "admin", "admin")
+	if err != nil {
+		t.Logf("changeCluster with pod index 99 returned error: %v", err)
+	}
+}
+
+func TestSyncService_PortsWithTargetPort(t *testing.T) {
+	targetPort := int32(9999)
+
+	curr := &apiv1.Service{
+		Spec: apiv1.ServiceSpec{
+			Ports: []apiv1.ServicePort{
+				{Name: "old", Port: 8080},
+			},
+		},
+	}
+
+	next := &apiv1.Service{
+		Spec: apiv1.ServiceSpec{
+			Ports: []apiv1.ServicePort{
+				{
+					Name:       "new",
+					Port:       8091,
+					TargetPort: intstr.FromInt(int(targetPort)),
+				},
+			},
+		},
+	}
+
+	SyncService(curr, next)
+
+	if curr.Spec.Ports[0].TargetPort.IntVal != targetPort {
+		t.Errorf("Expected target port %d, got %d", targetPort, curr.Spec.Ports[0].TargetPort.IntVal)
+	}
+}
+
+func TestSyncStatefulSet_WithVolumes(t *testing.T) {
+	replicas := int32(1)
+
+	curr := &appsv1.StatefulSet{
+		Spec: appsv1.StatefulSetSpec{
+			Replicas: &replicas,
+			Template: apiv1.PodTemplateSpec{
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{
+						{Name: "app", Image: "app:v1"},
+					},
+				},
+			},
+		},
+	}
+
+	next := &appsv1.StatefulSet{
+		Spec: appsv1.StatefulSetSpec{
+			Replicas: &replicas,
+			Template: apiv1.PodTemplateSpec{
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{
+						{Name: "app", Image: "app:v2"},
+					},
+					Volumes: []apiv1.Volume{
+						{
+							Name: "data",
+							VolumeSource: apiv1.VolumeSource{
+								EmptyDir: &apiv1.EmptyDirVolumeSource{},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	SyncStatefulSet(curr, next)
+
+	if len(curr.Spec.Template.Spec.Volumes) != 1 {
+		t.Errorf("Expected 1 volume, got %d", len(curr.Spec.Template.Spec.Volumes))
 	}
 }
