@@ -272,21 +272,45 @@ func TestSyncStatefulSet(t *testing.T) {
 
 func TestChangeCluster_ErrorHandling(t *testing.T) {
 	// Test error handling of changeCluster
-	// Without a real Seata server, this will trigger error path
+	// Without a real Seata server, connection should fail with an error
 	tests := []struct {
 		name     string
+		ctx      context.Context
 		username string
 		password string
 		index    int32
 	}{
 		{
 			name:     "empty credentials",
+			ctx:      context.Background(),
 			username: "",
 			password: "",
 			index:    0,
 		},
 		{
 			name:     "with credentials",
+			ctx:      context.Background(),
+			username: "admin",
+			password: "admin",
+			index:    0,
+		},
+		{
+			name:     "invalid index",
+			ctx:      context.Background(),
+			username: "admin",
+			password: "admin",
+			index:    999,
+		},
+		{
+			name:     "nil context (should use default)",
+			ctx:      nil,
+			username: "admin",
+			password: "admin",
+			index:    0,
+		},
+		{
+			name:     "nil SeataServer",
+			ctx:      context.Background(),
 			username: "admin",
 			password: "admin",
 			index:    0,
@@ -295,12 +319,17 @@ func TestChangeCluster_ErrorHandling(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			seataServer := createTestSeataServer("test-seata", "default", 3)
-			err := changeCluster(seataServer, tt.index, tt.username, tt.password)
+			var seataServer *seatav1alpha1.SeataServer
+			if tt.name != "nil SeataServer" {
+				seataServer = createTestSeataServer("test-seata", "default", 3)
+			}
+
+			err := changeCluster(tt.ctx, seataServer, tt.index, tt.username, tt.password)
+			// Since there's no real Seata server (or nil server), we expect an error
 			if err == nil {
-				t.Log("changeCluster returned no error (expected as there is no real server)")
+				t.Error("Expected error when connecting to non-existent server, but got nil")
 			} else {
-				t.Logf("changeCluster returned expected error: %v", err)
+				t.Logf("Got expected error: %v", err)
 			}
 		})
 	}
@@ -308,47 +337,150 @@ func TestChangeCluster_ErrorHandling(t *testing.T) {
 
 func TestSyncRaftCluster_ErrorHandling(t *testing.T) {
 	// Test error handling of SyncRaftCluster
-	// Without a real Seata server, this will test error path
-	ctx := context.Background()
-	seataServer := createTestSeataServer("test-seata", "default", 3)
+	// Without a real Seata server, all goroutines should fail
+	tests := []struct {
+		name     string
+		ctx      context.Context
+		server   *seatav1alpha1.SeataServer
+		replicas int32
+		username string
+		password string
+	}{
+		{
+			name:     "single replica",
+			ctx:      context.Background(),
+			replicas: 1,
+			username: "admin",
+			password: "admin",
+		},
+		{
+			name:     "multiple replicas",
+			ctx:      context.Background(),
+			replicas: 3,
+			username: "admin",
+			password: "admin",
+		},
+		{
+			name:     "nil context (should use default)",
+			ctx:      nil,
+			replicas: 1,
+			username: "admin",
+			password: "admin",
+		},
+		{
+			name:     "nil SeataServer",
+			ctx:      context.Background(),
+			server:   nil,
+			username: "admin",
+			password: "admin",
+		},
+	}
 
-	err := SyncRaftCluster(ctx, seataServer, "admin", "admin")
-	if err != nil {
-		t.Logf("SyncRaftCluster returned expected error (no real server): %v", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var seataServer *seatav1alpha1.SeataServer
+			if tt.server == nil && tt.name != "nil SeataServer" {
+				seataServer = createTestSeataServer("test-seata", "default", tt.replicas)
+			} else {
+				seataServer = tt.server
+			}
+
+			err := SyncRaftCluster(tt.ctx, seataServer, tt.username, tt.password)
+			// Since there's no real Seata server (or nil server), we expect an error
+			if err == nil {
+				t.Error("Expected error when connecting to non-existent server, but got nil")
+			} else {
+				t.Logf("Got expected error: %v", err)
+			}
+		})
 	}
 }
 
 // Boundary condition test: nil input
 func TestSyncService_NilInput(t *testing.T) {
-	defer func() {
-		if r := recover(); r != nil {
-			t.Logf("Expected panic captured: %v", r)
-		}
-	}()
+	tests := []struct {
+		name string
+		curr *apiv1.Service
+		next *apiv1.Service
+	}{
+		{
+			name: "nil current service",
+			curr: nil,
+			next: &apiv1.Service{},
+		},
+		{
+			name: "nil next service",
+			curr: &apiv1.Service{},
+			next: nil,
+		},
+		{
+			name: "both nil",
+			curr: nil,
+			next: nil,
+		},
+	}
 
-	// Test boundary case of nil input
-	var curr *apiv1.Service
-	next := &apiv1.Service{}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			didPanic := false
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						didPanic = true
+						t.Logf("Expected panic captured: %v", r)
+					}
+				}()
+				SyncService(tt.curr, tt.next)
+			}()
 
-	// This should panic because curr is nil
-	SyncService(curr, next)
-	t.Error("Expected panic did not occur")
+			if !didPanic {
+				t.Error("Expected panic did not occur")
+			}
+		})
+	}
 }
 
 func TestSyncStatefulSet_NilInput(t *testing.T) {
-	defer func() {
-		if r := recover(); r != nil {
-			t.Logf("Expected panic captured: %v", r)
-		}
-	}()
+	tests := []struct {
+		name string
+		curr *appsv1.StatefulSet
+		next *appsv1.StatefulSet
+	}{
+		{
+			name: "nil current statefulset",
+			curr: nil,
+			next: &appsv1.StatefulSet{},
+		},
+		{
+			name: "nil next statefulset",
+			curr: &appsv1.StatefulSet{},
+			next: nil,
+		},
+		{
+			name: "both nil",
+			curr: nil,
+			next: nil,
+		},
+	}
 
-	// Test boundary case of nil input
-	var curr *appsv1.StatefulSet
-	next := &appsv1.StatefulSet{}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			didPanic := false
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						didPanic = true
+						t.Logf("Expected panic captured: %v", r)
+					}
+				}()
+				SyncStatefulSet(tt.curr, tt.next)
+			}()
 
-	// This should panic because curr is nil
-	SyncStatefulSet(curr, next)
-	t.Error("Expected panic did not occur")
+			if !didPanic {
+				t.Error("Expected panic did not occur")
+			}
+		})
+	}
 }
 
 // Helper function: create test SeataServer with custom parameters
