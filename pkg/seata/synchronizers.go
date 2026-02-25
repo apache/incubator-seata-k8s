@@ -43,10 +43,22 @@ const (
 )
 
 func SyncService(curr *apiv1.Service, next *apiv1.Service) {
+	if curr == nil {
+		panic("SyncService: current service cannot be nil")
+	}
+	if next == nil {
+		panic("SyncService: next service cannot be nil")
+	}
 	curr.Spec.Ports = next.Spec.Ports
 }
 
 func SyncStatefulSet(curr *appsv1.StatefulSet, next *appsv1.StatefulSet) {
+	if curr == nil {
+		panic("SyncStatefulSet: current statefulset cannot be nil")
+	}
+	if next == nil {
+		panic("SyncStatefulSet: next statefulset cannot be nil")
+	}
 	curr.Spec.Template = next.Spec.Template
 	curr.Spec.Replicas = next.Spec.Replicas
 }
@@ -58,7 +70,14 @@ type rspData struct {
 	Success bool   `json:"success"`
 }
 
-func changeCluster(s *seatav1alpha1.SeataServer, i int32, username string, password string) error {
+func changeCluster(ctx context.Context, s *seatav1alpha1.SeataServer, i int32, username string, password string) error {
+	if s == nil {
+		return fmt.Errorf("changeCluster: SeataServer cannot be nil")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	// Create HTTP client with timeout
 	client := &http.Client{
 		Timeout: httpClientTimeout,
@@ -73,10 +92,10 @@ func changeCluster(s *seatav1alpha1.SeataServer, i int32, username string, passw
 	}
 
 	loginURL := fmt.Sprintf("http://%s/api/v1/auth/login", host)
-	ctx, cancel := context.WithTimeout(context.Background(), httpRequestTimeout)
-	defer cancel()
+	loginCtx, loginCancel := context.WithTimeout(ctx, httpRequestTimeout)
+	defer loginCancel()
 
-	req, err := http.NewRequestWithContext(ctx, "POST", loginURL, bytes.NewBuffer(jsonValue))
+	req, err := http.NewRequestWithContext(loginCtx, "POST", loginURL, bytes.NewBuffer(jsonValue))
 	if err != nil {
 		return fmt.Errorf("failed to create login request: %w", err)
 	}
@@ -110,10 +129,10 @@ func changeCluster(s *seatav1alpha1.SeataServer, i int32, username string, passw
 	targetURL := fmt.Sprintf("http://%s/metadata/v1/changeCluster?raftClusterStr=%s",
 		host, url.QueryEscape(utils.ConcatRaftServerAddress(s)))
 
-	ctx, cancel = context.WithTimeout(context.Background(), httpRequestTimeout)
-	defer cancel()
+	clusterCtx, clusterCancel := context.WithTimeout(ctx, httpRequestTimeout)
+	defer clusterCancel()
 
-	req, err = http.NewRequestWithContext(ctx, "POST", targetURL, nil)
+	req, err = http.NewRequestWithContext(clusterCtx, "POST", targetURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create changeCluster request: %w", err)
 	}
@@ -146,22 +165,31 @@ func changeCluster(s *seatav1alpha1.SeataServer, i int32, username string, passw
 }
 
 func SyncRaftCluster(ctx context.Context, s *seatav1alpha1.SeataServer, username string, password string) error {
+	if s == nil {
+		return fmt.Errorf("SyncRaftCluster: SeataServer cannot be nil")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	logger := log.FromContext(ctx)
 	group, childContext := errgroup.WithContext(ctx)
 
 	for i := int32(0); i < s.Spec.Replicas; i++ {
 		finalI := i
 		group.Go(func() error {
+			// Check if context is already cancelled before proceeding
 			select {
 			case <-childContext.Done():
-				return nil
+				return childContext.Err()
 			default:
-				err := changeCluster(s, finalI, username, password)
-				if err != nil {
-					logger.Error(err, fmt.Sprintf("fail to SyncRaftCluster at %d-th pod", finalI))
-				}
-				return err
 			}
+
+			err := changeCluster(childContext, s, finalI, username, password)
+			if err != nil {
+				logger.Error(err, fmt.Sprintf("fail to SyncRaftCluster at %d-th pod", finalI))
+			}
+			return err
 		})
 	}
 	return group.Wait()
